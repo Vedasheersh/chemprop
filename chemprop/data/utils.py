@@ -341,6 +341,7 @@ def get_invalid_smiles_from_list(smiles: List[List[str]], reaction: bool = False
 
 
 def get_data(path: str,
+             vocabulary_path: str,
              smiles_columns: Union[str, List[str]] = None,
              target_columns: List[str] = None,
              ignore_columns: List[str] = None,
@@ -354,7 +355,7 @@ def get_data(path: str,
              bond_descriptors_path: str = None,
              constraints_path: str = None,
              max_data_size: int = None,
-             store_row: bool = False,
+             store_row: bool = True,
              logger: Logger = None,
              loss_function: str = None,
              skip_none_targets: bool = False) -> MoleculeDataset:
@@ -362,6 +363,7 @@ def get_data(path: str,
     Gets SMILES and target values from a CSV file.
 
     :param path: Path to a CSV file.
+    :param vocabulary_path: Path to a JSON file of ec and tax. word vocabulary.
     :param smiles_columns: The names of the columns containing SMILES.
                            By default, uses the first :code:`number_of_molecules` columns.
     :param target_columns: Name of the columns containing target values. By default, uses all columns
@@ -463,6 +465,9 @@ def get_data(path: str,
     else:
         gt_targets, lt_targets = None, None
 
+    # Load vocabulary
+    vocabulary = json.load(open(vocabulary_path))
+                 
     # Load data
     with open(path) as f:
         reader = csv.DictReader(f)
@@ -572,6 +577,7 @@ def get_data(path: str,
         data = MoleculeDataset([
             MoleculeDatapoint(
                 smiles=smiles,
+                vocabulary=vocabulary,
                 targets=targets,
                 atom_targets=all_atom_targets[i] if atom_targets else None,
                 bond_targets=all_bond_targets[i] if bond_targets else None,
