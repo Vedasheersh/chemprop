@@ -329,6 +329,22 @@ class MoleculeDataset(Dataset):
         self._batch_graph = None
         self._random = Random()
 
+    def ec_features(self) -> List[List[int]]:
+        """
+        Returns a list containing the list of ec_featurers associated with each :class:`MoleculeDatapoint`.
+        
+        :return: A list of lists of ec_features
+        """
+        return [d.ec_features for d in self._data]
+
+    def tax_features(self) -> List[List[int]]:
+        """
+        Returns a list containing the list of tax_featurers associated with each :class:`MoleculeDatapoint`.
+        
+        :return: A list of lists of tax_features
+        """
+        return [d.tax_features for d in self._data]
+    
     def smiles(self, flatten: bool = False) -> Union[List[str], List[List[str]]]:
         """
         Returns a list containing the SMILES list associated with each :class:`MoleculeDatapoint`.
@@ -418,9 +434,13 @@ class MoleculeDataset(Dataset):
             self._batch_graph = []
 
             mol_graphs = []
+            ecs = []
+            taxs = []
             for d in self._data:
                 mol_graphs_list = []
-                for s, m in zip(d.smiles, d.mol):
+                ec_feature_list = []
+                tax_feature_list = []
+                for s, m, ef, tf in zip(d.smiles, d.mol, d.ec_features, d.tax_features):
                     if s in SMILES_TO_GRAPH:
                         mol_graph = SMILES_TO_GRAPH[s]
                     else:
@@ -434,9 +454,13 @@ class MoleculeDataset(Dataset):
                         if cache_graph():
                             SMILES_TO_GRAPH[s] = mol_graph
                     mol_graphs_list.append(mol_graph)
+                    ec_feature_list.append(ef)
+                    tax_feature_list.append(tf)
                 mol_graphs.append(mol_graphs_list)
-
-            self._batch_graph = [BatchMolGraph([g[i] for g in mol_graphs]) for i in range(len(mol_graphs[0]))]
+                ecs.append(ec_feature_list)
+                taxs.append(tax_feature_list)
+                
+            self._batch_graph = [BatchMolGraph([(g[i],e[i],t[i]) for g,e,t in zip(mol_graphs,ecs,taxs)]) for i in range(len(mol_graphs[0]))]
 
         return self._batch_graph
 
