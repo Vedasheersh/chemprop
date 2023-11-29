@@ -56,6 +56,9 @@ class MoleculeDatapoint:
 
     def __init__(self,
                  smiles: List[str],
+                 # ec_words: List[str],
+                 # tax_words: List[str],
+                 vocabulary: OrderedDict = None,
                  targets: List[Optional[float]] = None,
                  atom_targets: List[Optional[float]] = None,
                  bond_targets: List[Optional[float]] = None,
@@ -76,6 +79,7 @@ class MoleculeDatapoint:
                  overwrite_default_bond_features: bool = False):
         """
         :param smiles: A list of the SMILES strings for the molecules.
+        :param vocabulary: The dict of ec and taxonomy vocabularies
         :param targets: A list of targets for the molecule (contains None for unknown target values).
         :param atom_targets: A list of targets for the atomic properties.
         :param bond_targets: A list of targets for the bond properties.
@@ -95,6 +99,7 @@ class MoleculeDatapoint:
 
         """
         self.smiles = smiles
+        self.vocabulary = vocabulary
         self.targets = targets
         self.atom_targets = atom_targets
         self.bond_targets = bond_targets
@@ -176,6 +181,17 @@ class MoleculeDatapoint:
         self.raw_atom_descriptors, self.raw_atom_features, self.raw_bond_descriptors, self.raw_bond_features = \
             self.atom_descriptors, self.atom_features, self.bond_descriptors, self.bond_features
 
+        # Use vocabularies to featurize ec_words and tax_words
+        self.ec_features = []
+        self.tax_features = []
+
+        ec_words = ['ec1','ec2','ec3','ec4']
+        for word in ec_words:
+            self.ec_features.append(self.vocabulary[word][row[word]])
+        tax_words = ['superkingdom','phylum','class','order','family','genus','species']
+        for word in tax_words:
+            self.tax_features.append(self.vocabulary[word][row[word]])
+            
     @property
     def mol(self) -> List[Union[Chem.Mol, Tuple[Chem.Mol, Chem.Mol]]]:
         """Gets the corresponding list of RDKit molecules for the corresponding SMILES list."""
