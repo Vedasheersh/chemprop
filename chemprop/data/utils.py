@@ -342,6 +342,7 @@ def get_invalid_smiles_from_list(smiles: List[List[str]], reaction: bool = False
 
 def get_data(path: str,
              vocabulary_path: str,
+             sequence_features_path: str,
              smiles_columns: Union[str, List[str]] = None,
              target_columns: List[str] = None,
              ignore_columns: List[str] = None,
@@ -364,6 +365,7 @@ def get_data(path: str,
 
     :param path: Path to a CSV file.
     :param vocabulary_path: Path to a JSON file of ec and tax. word vocabulary.
+    :param sequence_features_path: Path to a pkl file of 1D sequence features dictionary. 
     :param smiles_columns: The names of the columns containing SMILES.
                            By default, uses the first :code:`number_of_molecules` columns.
     :param target_columns: Name of the columns containing target values. By default, uses all columns
@@ -467,8 +469,17 @@ def get_data(path: str,
 
     # Load vocabulary
     vocabulary = json.load(open(vocabulary_path))
+    ec_words = ['ec1','ec2','ec3','ec']
+    tax_words = ['superkingdom','phylum','class','order','family','genus','species']
+    # get vocab sizes
+    args.embed_sizes = [len(vocabulary[word]) for word in ec_words+tax_words]
+    
+    # Load sequence features
+    if args.include_sequence_features:
+        sequence_features_dict = pickle.load(sequence_features_path)
                  
     # Load data
+    smoke_test_counter = 0
     with open(path) as f:
         reader = csv.DictReader(f)
         fieldnames = reader.fieldnames
@@ -478,9 +489,17 @@ def get_data(path: str,
             raise ValueError(f'Data file did not contain all provided target columns: {target_columns}. Data file field names are: {fieldnames}')
 
         all_smiles, all_targets, all_atom_targets, all_bond_targets, all_rows, all_features, all_phase_features, all_constraints_data, all_raw_constraints_data, all_weights, all_gt, all_lt = [], [], [], [], [], [], [], [], [], [], [], []
+        all_sequence_features = []
         for i, row in enumerate(tqdm(reader)):
+            smoke_test_counter+=1
+            if args.smoke_test: 
+                if smoke_test_counter>1000: break
             smiles = [row[c] for c in smiles_columns]
-
+            sequence = row['sequence']
+            if args.include_sequence_features: 
+                sequence_features = sequence_features_dict[sequence]
+            else:
+                sequence_features = None
             targets, atom_targets, bond_targets = [], [], []
             for column in target_columns:
                 value = row[column]
@@ -516,6 +535,7 @@ def get_data(path: str,
             if skip_none_targets and all(x is None for x in targets):
                 continue
 
+            if args.include_sequence_features: all_sequence_features.append(sequence_features)
             all_smiles.append(smiles)
             all_targets.append(targets)
             all_atom_targets.append(atom_targets)
@@ -578,6 +598,8 @@ def get_data(path: str,
             MoleculeDatapoint(
                 smiles=smiles,
                 vocabulary=vocabulary,
+                sequence=sequence,
+                sequence_features=sequence_features,
                 targets=targets,
                 atom_targets=all_atom_targets[i] if atom_targets else None,
                 bond_targets=all_bond_targets[i] if bond_targets else None,

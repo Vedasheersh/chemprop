@@ -10,7 +10,53 @@ from .ffn import build_ffn, MultiReadout
 from chemprop.args import TrainArgs
 from chemprop.features import BatchMolGraph
 from chemprop.nn_utils import initialize_weights
+    
+class EmbedderModel(nn.Module):
+    """A :class:`EmbedderModel` is a model which contains a series of embedding layers followed by an MLP layer."""
 
+    def __init__(self, args: TrainArgs):
+        """
+        :param args: A :class:`~chemprop.args.TrainArgs` object containing model arguments.
+        """
+        super(EmbedderModel, self).__init__()
+        
+        self.embed_dim_fn = lambda x: int(np.power(x, args.embed_size_to_dim_power))+1
+        self.device = args.device
+        
+        self.embed_layers = []
+        embed_dims = []
+        for size in args.embed_sizes:
+            dim = self.embed_dim_fn(size)
+            embed_dims.append(dim)
+            layer = nn.Embedding(size, dim).to(self.device)
+            nn.init.kaiming_normal_(layer.weight, nonlinearity='leaky_relu')
+            self.embed_layers.append(layer)
+            
+        self.embed_dropout = nn.Dropout(args.embed_dropout) if args.embed_dropout>0 else None
+            
+        self.mlp_module = build_ffn(
+                first_linear_dim = sum(embed_dims),
+                hidden_size = args.embed_mlp_hidden_size,
+                num_layers = args.embed_mlp_num_layers,
+                output_size = args.embed_mlp_output_size,
+                dropout = args.embed_mlp_dropout,
+                activation = 'LeakyReLU'
+                )
+    
+    def forward(self, categorical_data: torch.Tensor) -> torch.Tensor:
+        
+        embeds = []
+        for i, embedding_layer in enumerate(self.embed_layers):
+            # print(categorical_data[:,i])
+            embeds.append(embedding_layer(categorical_data[:,i]))
+        embeds = torch.cat(embeds, dim=1)
+
+        if self.embed_dropout is not None:
+            embeds = self.embed_dropout(embeds)
+        
+        output = self.mlp_module(embeds)
+
+        return output
 
 class MoleculeModel(nn.Module):
     """A :class:`MoleculeModel` is a model which contains a message passing network following by feed-forward layers."""
@@ -24,6 +70,8 @@ class MoleculeModel(nn.Module):
         self.classification = args.dataset_type == "classification"
         self.multiclass = args.dataset_type == "multiclass"
         self.loss_function = args.loss_function
+        self.args = args
+        self.device = args.device
 
         if hasattr(args, "train_class_sizes"):
             self.train_class_sizes = args.train_class_sizes
@@ -71,10 +119,26 @@ class MoleculeModel(nn.Module):
             self.softplus = nn.Softplus()
 
         self.create_encoder(args)
+        if args.include_embed_features: self.create_embed_model(args)
+        if args.include_sequence_features: self.create_sequence_model(args)
         self.create_ffn(args)
 
         initialize_weights(self)
 
+    def create_sequence_model(self, args: TrainArgs) -> None:
+        """
+        Creates the embedding model.
+
+        :param args: A :class:`~chemprop.args.TrainArgs` object containing model arguments.
+        """
+        self.sequence_model = build_ffn(
+                            first_linear_dim = sum(args.sequence_feat_size),
+                            hidden_size = args.sequence_mlp_hidden_size,
+                            num_layers = args.sequence_mlp_num_layers,
+                            output_size = args.sequence_mlp_output_size,
+                            dropout = args.sequence_mlp_dropout,
+                            activation = args.activation)
+        
     def create_encoder(self, args: TrainArgs) -> None:
         """
         Creates the message passing encoder for the model.
@@ -90,6 +154,14 @@ class MoleculeModel(nn.Module):
             else:  # Freeze all encoders
                 for param in self.encoder.parameters():
                     param.requires_grad = False
+                    
+    def create_embed_model(self, args: TrainArgs) -> None:
+        """
+        Creates the embedding model.
+
+        :param args: A :class:`~chemprop.args.TrainArgs` object containing model arguments.
+        """
+        self.embed_model = EmbedderModel(args)
 
     def create_ffn(self, args: TrainArgs) -> None:
         """
@@ -137,8 +209,13 @@ class MoleculeModel(nn.Module):
                 weights_ffn_num_layers=args.weights_ffn_num_layers,
             )
         else:
+            first_linear_dim_now = atom_first_linear_dim
+            if args.include_embed_features:
+                first_linear_dim_now += args.embed_mlp_output_size
+            if args.include_sequence_features:
+                first_linear_dim_now += args.sequence_mlp_output_size
             self.readout = build_ffn(
-                first_linear_dim=atom_first_linear_dim,
+                first_linear_dim=first_linear_dim_now,
                 hidden_size=args.ffn_hidden_size + args.atom_descriptors_size,
                 num_layers=args.ffn_num_layers,
                 output_size=self.relative_output_size * args.num_tasks,
@@ -283,7 +360,18 @@ class MoleculeModel(nn.Module):
                 bond_descriptors_batch,
                 bond_features_batch,
             )
+            if self.args.include_embed_features:
+                embed_feature_arr = torch.from_numpy(np.array(batch[-1].embed_feature_list)).to(torch.int64).to(self.device)
+                embed_output = self.embed_model(embed_feature_arr)
+                encodings = torch.concat([encodings,embed_output],dim=-1)
+            if self.args.include_sequence_features:
+                sequence_feature_arr = torch.from_numpy(np.array(batch[-1].sequence_feature_list)).float().to(self.device)
+                sequence_output = self.sequence_model(sequence_feature_arr)
+                encodings = torch.concat([encodings,sequence_output],dim=-1)
+            
+            # print(self.readout)
             output = self.readout(encodings)
+            # print(output.shape)
 
         # Don't apply sigmoid during training when using BCEWithLogitsLoss
         if (

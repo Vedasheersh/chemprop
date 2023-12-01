@@ -527,15 +527,16 @@ class BatchMolGraph:
     * :code:`b2br`: (Optional): A mapping from f_bonds to real bonds in molecule recorded in targets.
     """
 
-    def __init__(self, mol_graphs: List[MolGraph], ec_feature_list: List[List[int]], tax_feature_list: List[List[int]]):
+    def __init__(self, mol_graphs: List[MolGraph], embed_feature_list: List[np.ndarray],
+                 sequence_feature_list: List[np.ndarray]):
         r"""
         :param mol_graphs: A list of :class:`MolGraph`\ s from which to construct the :class:`BatchMolGraph`.
-        :param ec_feature_list: A list of list of ec_features corresponding to mol_graphs.
-        :param tax_feature_list: A list of list of tax_features corresponding to mol_graphs.
+        :param embed_feature_list: A list of arrays ec_tax_features corresponding to mol_graphs.
+        :param sequence_feature_list: A list of arrays of seq_features corresponding to mol_graphs.
         """
         self.mol_graphs = mol_graphs
-        self.ec_feature_list = ec_feature_list
-        self.tax_feature_list = tax_feature_list
+        self.embed_feature_list = embed_feature_list
+        self.sequence_feature_list = sequence_feature_list
         self.overwrite_default_atom_features = mol_graphs[0].overwrite_default_atom_features
         self.overwrite_default_bond_features = mol_graphs[0].overwrite_default_bond_features
         self.is_reaction = mol_graphs[0].is_reaction

@@ -61,7 +61,6 @@ def get_checkpoint_paths(checkpoint_path: Optional[str] = None,
 
     return None
 
-
 class CommonArgs(Tap):
     """:class:`CommonArgs` contains arguments that are used in both :class:`TrainArgs` and :class:`PredictArgs`."""
 
@@ -249,6 +248,12 @@ class TrainArgs(CommonArgs):
     # General arguments
     data_path: str
     """Path to data CSV file."""
+    vocabulary_path: str
+    """Path to vocabulary of ec and tax categories json file."""
+    smoke_test: bool = False
+    """ If smoke test?"""
+    sequence_features_path: str
+    """Path to a pkl file of 1D sequence features dictionary. """
     target_columns: List[str] = None
     """
     Name of the columns containing target values.
@@ -364,6 +369,34 @@ class TrainArgs(CommonArgs):
     """Number of layers in FFN after MPN encoding."""
     features_only: bool = False
     """Use only the additional features in an FFN, no graph network."""
+    include_sequence_features: bool = False
+    """ Whether to use sequence features"""
+    include_embed_features: bool = True
+    """ Whether to use embed features"""
+    sequence_feat_size: int = 1280
+    """ sequence feature size to input sequence model."""
+    sequence_mlp_hidden_size: int = 500
+    """ MLP hidden size for sequence model."""
+    sequence_mlp_num_layers: int = 2
+    """ Number of MLP layers for sequence model"""
+    sequence_mlp_output_size: int = 200 
+    """ MLP output size for sequence model """
+    sequence_mlp_dropout: float = 0.0
+    """ dropout for MLP layers in sequence model"""
+    embed_sizes: List[int] = None
+    """ List of embedding layer sizes"""
+    embed_size_to_dim_power: float = 0.33
+    """ Power to scale size to dimension of embedding layers"""
+    embed_dropout: float = 0.0
+    """ dropout to use in embedding model for embedding layers """
+    embed_mlp_hidden_size: int = 500
+    """ Embedding layers MLP hidden size"""
+    embed_mlp_num_layers: int = 2
+    """ Number of MLP layers for embedding model"""
+    embed_mlp_output_size: int = 200 
+    """ MLP output size for embedding model """
+    embed_mlp_dropout: float = 0.0
+    """ dropout for MLP layers in embedding model"""
     separate_val_features_path: List[str] = None
     """Path to file with features for separate val set."""
     separate_test_features_path: List[str] = None

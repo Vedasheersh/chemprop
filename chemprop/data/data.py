@@ -56,9 +56,9 @@ class MoleculeDatapoint:
 
     def __init__(self,
                  smiles: List[str],
-                 # ec_words: List[str],
-                 # tax_words: List[str],
                  vocabulary: OrderedDict = None,
+                 sequence: str = None,
+                 sequence_features: np.ndarray = None,
                  targets: List[Optional[float]] = None,
                  atom_targets: List[Optional[float]] = None,
                  bond_targets: List[Optional[float]] = None,
@@ -79,7 +79,9 @@ class MoleculeDatapoint:
                  overwrite_default_bond_features: bool = False):
         """
         :param smiles: A list of the SMILES strings for the molecules.
-        :param vocabulary: The dict of ec and taxonomy vocabularies
+        :param vocabulary: The dict of ec and taxonomy vocabularies.
+        :param sequence: The amino acid sequence of enzyme.
+        :param sequence_features: A numpy array of pre-calculated 1D sequence features. 
         :param targets: A list of targets for the molecule (contains None for unknown target values).
         :param atom_targets: A list of targets for the atomic properties.
         :param bond_targets: A list of targets for the bond properties.
@@ -100,6 +102,8 @@ class MoleculeDatapoint:
         """
         self.smiles = smiles
         self.vocabulary = vocabulary
+        self.sequence = sequence
+        self.sequence_features = sequence_features
         self.targets = targets
         self.atom_targets = atom_targets
         self.bond_targets = bond_targets
@@ -185,12 +189,16 @@ class MoleculeDatapoint:
         self.ec_features = []
         self.tax_features = []
 
-        ec_words = ['ec1','ec2','ec3','ec4']
-        for word in ec_words:
-            self.ec_features.append(self.vocabulary[word][row[word]])
+        ec_words = ['ec1','ec2','ec3','ec']
         tax_words = ['superkingdom','phylum','class','order','family','genus','species']
+        for word in ec_words:
+            now = str(row[word])
+            inte = int(self.vocabulary[word][now]) if now in vocabulary[word] else 0
+            self.ec_features.append(inte)
         for word in tax_words:
-            self.tax_features.append(self.vocabulary[word][row[word]])
+            now = str(row[word])
+            inte = int(self.vocabulary[word][now]) if now in vocabulary[word] else 0
+            self.tax_features.append(inte)
             
     @property
     def mol(self) -> List[Union[Chem.Mol, Tuple[Chem.Mol, Chem.Mol]]]:
@@ -434,13 +442,11 @@ class MoleculeDataset(Dataset):
             self._batch_graph = []
 
             mol_graphs = []
-            ecs = []
-            taxs = []
+            embeds = []
+            seq_feats = []
             for d in self._data:
                 mol_graphs_list = []
-                ec_feature_list = []
-                tax_feature_list = []
-                for s, m, ef, tf in zip(d.smiles, d.mol, d.ec_features, d.tax_features):
+                for s, m in zip(d.smiles, d.mol):
                     if s in SMILES_TO_GRAPH:
                         mol_graph = SMILES_TO_GRAPH[s]
                     else:
@@ -454,13 +460,11 @@ class MoleculeDataset(Dataset):
                         if cache_graph():
                             SMILES_TO_GRAPH[s] = mol_graph
                     mol_graphs_list.append(mol_graph)
-                    ec_feature_list.append(ef)
-                    tax_feature_list.append(tf)
                 mol_graphs.append(mol_graphs_list)
-                ecs.append(ec_feature_list)
-                taxs.append(tax_feature_list)
-                
-            self._batch_graph = [BatchMolGraph([(g[i],e[i],t[i]) for g,e,t in zip(mol_graphs,ecs,taxs)]) for i in range(len(mol_graphs[0]))]
+                embeds.append(d.ec_features+d.tax_features)
+                seq_feats.append(d.sequence_features)
+            
+            self._batch_graph = [BatchMolGraph([g[i] for g in mol_graphs],embeds,seq_feats) for i in range(len(mol_graphs[0]))]
 
         return self._batch_graph
 
