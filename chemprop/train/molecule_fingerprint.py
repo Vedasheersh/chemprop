@@ -61,7 +61,9 @@ def molecule_fingerprint(args: FingerprintArgs,
             features_generator=args.features_generator
         )
     else:
-        full_data = get_data(path=args.test_path, smiles_columns=args.smiles_columns, target_columns=[], ignore_columns=[], skip_invalid_smiles=False,
+        full_data = get_data(vocabulary_path=args.vocabulary_path,
+                             sequence_features_path=args.sequence_features_path,
+                             path=args.test_path, smiles_columns=args.smiles_columns, target_columns=[], ignore_columns=[], skip_invalid_smiles=False,
                              args=args, store_row=True)
 
     print('Validating SMILES')
@@ -86,6 +88,8 @@ def molecule_fingerprint(args: FingerprintArgs,
         batch_size=args.batch_size,
         num_workers=args.num_workers
     )
+    
+    print(args)
 
     # Set fingerprint size
     if args.fingerprint_type == 'MPN':
@@ -125,6 +129,7 @@ def molecule_fingerprint(args: FingerprintArgs,
                 test_data.normalize_features(bond_descriptor_scaler, scale_bond_descriptors=True)
 
         # Make fingerprints
+        print(total_fp_size)
         model_fp = model_fingerprint(
             model=model,
             data_loader=test_data_loader,

@@ -248,12 +248,10 @@ class TrainArgs(CommonArgs):
     # General arguments
     data_path: str
     """Path to data CSV file."""
-    vocabulary_path: str
-    """Path to vocabulary of ec and tax categories json file."""
     smoke_test: bool = False
     """ If smoke test?"""
-    sequence_features_path: str
-    """Path to a pkl file of 1D sequence features dictionary. """
+    sequence_max_length = 2048
+    """ """
     target_columns: List[str] = None
     """
     Name of the columns containing target values.
@@ -277,7 +275,7 @@ class TrainArgs(CommonArgs):
     """Path to weights for each molecule in the training data, affecting the relative weight of molecules in the loss function"""
     target_weights: List[float] = None
     """Weights associated with each target, affecting the relative weight of targets in the loss function. Must match the number of target columns."""
-    split_type: Literal['random', 'scaffold_balanced', 'predetermined', 'crossval', 'cv', 'cv-no-test', 'index_predetermined', 'random_with_repeated_smiles', 'molecular_weight'] = 'random'
+    split_type: Literal['random', 'scaffold_balanced', 'predetermined', 'crossval', 'cv', 'cv-no-test', 'index_predetermined', 'random_with_repeated_smiles', 'molecular_weight','catpred'] = 'random'
     """Method of splitting the data into train/val/test."""
     split_sizes: List[float] = None
     """Split proportions for train/validation/test sets."""
@@ -312,6 +310,8 @@ class TrainArgs(CommonArgs):
     """Additional metrics to use to evaluate the model. Not used for early stopping."""
     save_dir: str = None
     """Directory where model checkpoints will be saved."""
+    unfreeze_all: bool = False
+    """Unfreeze force all parameters?"""
     checkpoint_frzn: str = None
     """Path to model checkpoint file to be loaded for overwriting and freezing weights."""
     save_smiles_splits: bool = False
@@ -371,15 +371,15 @@ class TrainArgs(CommonArgs):
     """Use only the additional features in an FFN, no graph network."""
     include_sequence_features: bool = False
     """ Whether to use sequence features"""
-    include_embed_features: bool = True
+    include_embed_features: bool = False
     """ Whether to use embed features"""
     sequence_feat_size: int = 1280
     """ sequence feature size to input sequence model."""
-    sequence_mlp_hidden_size: int = 500
+    sequence_mlp_hidden_size: int = 640
     """ MLP hidden size for sequence model."""
     sequence_mlp_num_layers: int = 2
     """ Number of MLP layers for sequence model"""
-    sequence_mlp_output_size: int = 200 
+    sequence_mlp_output_size: int = 320 
     """ MLP output size for sequence model """
     sequence_mlp_dropout: float = 0.0
     """ dropout for MLP layers in sequence model"""
@@ -389,7 +389,7 @@ class TrainArgs(CommonArgs):
     """ Power to scale size to dimension of embedding layers"""
     embed_dropout: float = 0.0
     """ dropout to use in embedding model for embedding layers """
-    embed_mlp_hidden_size: int = 500
+    embed_mlp_hidden_size: int = 200
     """ Embedding layers MLP hidden size"""
     embed_mlp_num_layers: int = 2
     """ Number of MLP layers for embedding model"""
@@ -446,6 +446,8 @@ class TrainArgs(CommonArgs):
     """
     Whether to adjust the MPNN layer to take as input a reaction and a molecule, and to encode them with separate MPNNs.
     """
+    reaction_substrate: bool = False
+    """kcat km"""
     explicit_h: bool = False
     """
     Whether H are explicitly specified in input (and should be kept this way). This option is intended to be used
@@ -1052,7 +1054,7 @@ class InterpretArgs(CommonArgs):
 class FingerprintArgs(PredictArgs):
     """:class:`FingerprintArgs` includes :class:`PredictArgs` with additional arguments for the generation of latent fingerprint vectors."""
 
-    fingerprint_type: Literal['MPN', 'last_FFN'] = 'MPN'
+    fingerprint_type: Literal['MPN', 'last_FFN', 'embed'] = 'MPN'
     """Choice of which type of latent fingerprint vector to use. Default is the output of the MPNN, excluding molecular features"""
 
 

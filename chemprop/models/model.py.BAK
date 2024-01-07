@@ -109,7 +109,7 @@ class SelfAttentionBlock(nn.Module):
         return x
     
 class AttentivePooling(nn.Module):
-    def __init__(self, input_size=1280, hidden_size=1280):
+    def __init__(self, input_size=1280, hidden_size=640):
         super(AttentivePooling, self).__init__()
         self.input_size = input_size
         self.hidden_size = hidden_size
@@ -129,6 +129,54 @@ class AttentivePooling(nn.Module):
         attn_applied = torch.bmm(attn_weights.permute(0, 2, 1), input_tensor)
 
         return attn_applied.squeeze(1), attn_weights.squeeze(-1)
+        
+class EmbedderModel(nn.Module):
+    """A :class:`EmbedderModel` is a model which contains a series of embedding layers followed by an MLP layer."""
+
+    def __init__(self, args: TrainArgs):
+        """
+        :param args: A :class:`~chemprop.args.TrainArgs` object containing model arguments.
+        """
+        super(EmbedderModel, self).__init__()
+        
+        self.embed_dim_fn = lambda x: int(np.power(x, args.embed_size_to_dim_power))+1
+        self.device = args.device
+        
+        embed_layers = []
+        embed_dims = []
+        for size in args.embed_sizes:
+            dim = self.embed_dim_fn(size)
+            embed_dims.append(dim)
+            layer = nn.Embedding(size, dim).to(self.device)
+            nn.init.kaiming_normal_(layer.weight, nonlinearity='leaky_relu')
+            embed_layers.append(layer)
+            
+        self.embed_module = nn.ModuleList(embed_layers)
+        self.embed_dropout = nn.Dropout(args.embed_dropout) if args.embed_dropout>0 else None
+            
+        self.mlp_module = build_ffn(
+                first_linear_dim = sum(embed_dims),
+                hidden_size = args.embed_mlp_hidden_size,
+                num_layers = args.embed_mlp_num_layers,
+                output_size = args.embed_mlp_output_size,
+                dropout = args.embed_mlp_dropout,
+                activation = 'LeakyReLU'
+                )
+    
+    def forward(self, categorical_data: torch.Tensor) -> torch.Tensor:
+        
+        embeds = []
+        for i, embedding_layer in enumerate(self.embed_module):
+            # print(i,categorical_data[:,i])
+            embeds.append(embedding_layer(categorical_data[:,i]))
+        embeds = torch.cat(embeds, dim=1)
+
+        if self.embed_dropout is not None:
+            embeds = self.embed_dropout(embeds)
+        
+        output = self.mlp_module(embeds)
+
+        return output
 
 class MoleculeModel(nn.Module):
     """A :class:`MoleculeModel` is a model which contains a message passing network following by feed-forward layers."""
@@ -190,16 +238,16 @@ class MoleculeModel(nn.Module):
             self.softplus = nn.Softplus()
 
         self.create_encoder(args)
-        
+        if args.include_embed_features: 
+            print('Creating embed model')
+            self.create_embed_model(args)
         if args.include_sequence_features: 
             print('Creating sequence model')
             self.create_sequence_model(args)
+            self.create_attentive_sequence_model(args)
         self.create_ffn(args)
 
         initialize_weights(self)
-        if args.include_sequence_features: 
-            print('Creating attentive sequence model')
-            self.create_attentive_sequence_model(args)
 
     def create_sequence_model(self, args: TrainArgs) -> None:
         """
@@ -207,8 +255,9 @@ class MoleculeModel(nn.Module):
 
         :param args: A :class:`~chemprop.args.TrainArgs` object containing model arguments.
         """
+        print('Sequence model'*1000)
         self.sequence_model = build_ffn(
-                            first_linear_dim = 1280+120,
+                            first_linear_dim = args.sequence_feat_size,
                             hidden_size = args.sequence_mlp_hidden_size,
                             num_layers = args.sequence_mlp_num_layers,
                             output_size = args.sequence_mlp_output_size,
@@ -221,21 +270,18 @@ class MoleculeModel(nn.Module):
 
         :param args: A :class:`~chemprop.args.TrainArgs` object containing model arguments.
         """
-        import esm
-        from esm.model.esm2 import ESM2
-        self.esm_model, alphabet = esm.pretrained.esm2_t6_8M_UR50D()
-        self.esm_model = ESM2(6, 120, 6, alphabet)
-        self.esm_model = self.esm_model.to(self.device)#ESM2(6, 1280, 20, alphabet)
-        attn_layer = AttentivePooling(self.esm_model.embed_dim+1280, self.esm_model.embed_dim+1280)
-        self.sequence_attention = attn_layer
-        #         self.protein_self_attns = nn.ModuleList([])
+        
+        self.protein_self_attns = nn.ModuleList([])
 
-#         for _ in range(1):
-#             attn = SelfAttentionBlock(
-#                 dim = 1280,
-#                 dropout = 0.0
-#              )
-#             self.protein_self_attns.append(attn)
+        for _ in range(1):
+            attn = SelfAttentionBlock(
+                dim = 1280,
+                dropout = 0.0
+            )
+            self.protein_self_attns.append(attn)
+            
+        attn_layer = AttentivePooling()
+        self.sequence_attention = attn_layer
         
     def create_encoder(self, args: TrainArgs) -> None:
         """
@@ -471,24 +517,20 @@ class MoleculeModel(nn.Module):
                 bond_descriptors_batch,
                 bond_features_batch,
             )
-
+            if self.args.include_embed_features:
+                embed_feature_arr = torch.from_numpy(np.array(batch[-1].embed_feature_list)).to(torch.int64).to(self.device)
+                embed_output = self.embed_model(embed_feature_arr)
+                encodings = torch.concat([encodings,embed_output],dim=-1)
             if self.args.include_sequence_features:
                 sequence_feature_arr = batch[-1].sequence_feature_list
-                sequence_token_arr = batch[-1].sequence_token_list
                 sequence_feature_arr = pad_sequence(sequence_feature_arr,batch_first=True).to(self.device)
-                sequence_token_arr = pad_sequence(sequence_token_arr,
-                                                  padding_value=1,batch_first=True).to(self.device)
                 # for self_attn_block in self.protein_self_attns:
                 #     sequence_feature_arr = self_attn_block(sequence_feature_arr)
-                
-                sequence_output = self.esm_model(sequence_token_arr,repr_layers=[len(self.esm_model.layers)])['representations'][len(self.esm_model.layers)][:, 1: len(sequence_feature_arr[0]) + 1, :]
-                sequence_output, sequence_weights = self.sequence_attention(torch.cat([sequence_feature_arr,sequence_output],dim=-1))
-                
+                sequence_output, sequence_weights = self.sequence_attention(sequence_feature_arr)
                 sequence_output = self.sequence_model(sequence_output)
                 encodings = torch.concat([encodings,sequence_output],dim=-1)
             
-            #print(self.readout)
-            #print(encodings.shape)
+            # print(self.readout)
             output = self.readout(encodings)
             # print(output.shape)
 
@@ -561,4 +603,3 @@ class MoleculeModel(nn.Module):
                 output = nn.functional.softplus(output) + 1
 
         return output
-

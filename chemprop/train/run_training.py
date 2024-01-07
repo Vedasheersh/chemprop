@@ -51,8 +51,6 @@ def run_training(args: TrainArgs,
     debug(f'Splitting data with seed {args.seed}')
     if args.separate_test_path:
         test_data = get_data(path=args.separate_test_path,
-                             vocabulary_path=args.vocabulary_path,
-                             sequence_features_path=args.sequence_features_path,
                              args=args,
                              features_path=args.separate_test_features_path,
                              atom_descriptors_path=args.separate_test_atom_descriptors_path,
@@ -64,8 +62,6 @@ def run_training(args: TrainArgs,
                              logger=logger)
     if args.separate_val_path:
         val_data = get_data(path=args.separate_val_path,
-                            vocabulary_path=args.vocabulary_path,
-                            sequence_features_path=args.sequence_features_path,
                             args=args,
                             features_path=args.separate_val_features_path,
                             atom_descriptors_path=args.separate_val_atom_descriptors_path,
@@ -271,6 +267,10 @@ def run_training(args: TrainArgs,
         debug(model)
 
         if args.checkpoint_frzn is not None:
+            if args.unfreeze_all:
+                print('Force unfreezing all paramters')
+                for param in model.parameters():
+                    param.requires_grad = True
             debug(f'Number of unfrozen parameters = {param_count(model):,}')
             debug(f'Total number of parameters = {param_count_all(model):,}')
         else:

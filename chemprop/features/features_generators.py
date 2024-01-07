@@ -4,8 +4,9 @@ import numpy as np
 from rdkit import Chem, DataStructs
 from rdkit.Chem import AllChem
 
-
 Molecule = Union[str, Chem.Mol]
+Reaction = Union[str, Chem.rdChemReactions.ChemicalReaction]
+
 FeaturesGenerator = Callable[[Molecule], np.ndarray]
 
 
@@ -68,6 +69,40 @@ def morgan_binary_features_generator(mol: Molecule,
 
     return features
 
+# @register_features_generator('chemberta')
+# def chemberta_features_generator(mol: Molecule) -> np.ndarray:
+#     # If you want to use the SMILES string
+#     smiles = Chem.MolToSmiles(mol, isomericSmiles=True) if type(mol) != str else mol
+
+#     # Replace this with code which generates features from the molecule
+#     model = AutoModelWithLMHead.from_pretrained(model_uri).bert.to('cuda')
+#     model.eval()
+#     for param in self.model.parameters():
+#         param.requires_grad = False
+            
+#     tokenizer = AutoTokenizer.from_pretrained(model_uri,use_fast=True)
+#     features = np.array([0, 0, 1])
+
+#     return features
+
+import ipdb
+@register_features_generator('morgan_diff_fp')
+def morgan_difference_features_generator(rxn: Reaction) -> np.ndarray:
+    """
+    Generates a difference Morgan fingerprint for a reaction.
+
+    :param rxn: A reaction (i.e., either a SMILES or an RDKit rxn).
+    :return: A 1D numpy array containing the difference-based Morgan fingerprint.
+    """
+    # ipdb.set_trace()
+    rxn = Chem.rdChemReactions.ReactionFromSmarts(rxn) if type(rxn) == str else rxn
+    params = Chem.rdChemReactions.ReactionFingerprintParams()
+    params.fpType = Chem.rdChemReactions.FingerprintType.MorganFP
+    features_vec = Chem.rdChemReactions.CreateDifferenceFingerprintForReaction(rxn, params)
+    features = np.zeros((1,))
+    DataStructs.ConvertToNumpyArray(features_vec, features)
+
+    return features/10.0
 
 @register_features_generator('morgan_count')
 def morgan_counts_features_generator(mol: Molecule,
@@ -133,6 +168,7 @@ except ImportError:
                           '(https://github.com/bp-kelley/descriptastorus) to use RDKit 2D normalized features.')
 
 
+        
 """
 Custom features generator template.
 

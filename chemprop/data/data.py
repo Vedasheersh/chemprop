@@ -50,15 +50,16 @@ def set_cache_mol(cache_mol: bool) -> None:
     global CACHE_MOL
     CACHE_MOL = cache_mol
 
+import ipdb
 
 class MoleculeDatapoint:
     """A :class:`MoleculeDatapoint` contains a single molecule and its associated features and targets."""
 
     def __init__(self,
                  smiles: List[str],
-                 vocabulary: OrderedDict = None,
                  sequence: str = None,
                  sequence_features: np.ndarray = None,
+                 sequence_tokens = None,
                  targets: List[Optional[float]] = None,
                  atom_targets: List[Optional[float]] = None,
                  bond_targets: List[Optional[float]] = None,
@@ -79,9 +80,9 @@ class MoleculeDatapoint:
                  overwrite_default_bond_features: bool = False):
         """
         :param smiles: A list of the SMILES strings for the molecules.
-        :param vocabulary: The dict of ec and taxonomy vocabularies.
         :param sequence: The amino acid sequence of enzyme.
         :param sequence_features: A numpy array of pre-calculated 1D sequence features. 
+        :param sequence_tokens: Tokens esm
         :param targets: A list of targets for the molecule (contains None for unknown target values).
         :param atom_targets: A list of targets for the atomic properties.
         :param bond_targets: A list of targets for the bond properties.
@@ -101,9 +102,9 @@ class MoleculeDatapoint:
 
         """
         self.smiles = smiles
-        self.vocabulary = vocabulary
         self.sequence = sequence
         self.sequence_features = sequence_features
+        self.sequence_tokens = sequence_tokens
         self.targets = targets
         self.atom_targets = atom_targets
         self.bond_targets = bond_targets
@@ -150,11 +151,12 @@ class MoleculeDatapoint:
                             # not all features are equally long, so use methane as dummy molecule to determine length
                             self.features.extend(np.zeros(len(features_generator(Chem.MolFromSmiles('C')))))
                     else:
-                        if m[0] is not None and m[1] is not None and m[0].GetNumHeavyAtoms() > 0:
-                            self.features.extend(features_generator(m[0]))
-                        elif m[0] is not None and m[1] is not None and m[0].GetNumHeavyAtoms() == 0:
-                            self.features.extend(np.zeros(len(features_generator(Chem.MolFromSmiles('C')))))   
-                    
+                        # ipdb.set_trace()
+                        self.features.extend(features_generator(self.smiles[0]))
+                        # if m[0] is not None and m[1] is not None and m[0].GetNumHeavyAtoms() > 0:
+                        #     self.features.extend(features_generator(m[0]))
+                        # elif m[0] is not None and m[1] is not None and m[0].GetNumHeavyAtoms() == 0:
+                        #     self.features.extend(np.zeros(len(features_generator(Chem.MolFromSmiles('C'))))) 
 
             self.features = np.array(self.features)
 
@@ -184,21 +186,6 @@ class MoleculeDatapoint:
             self.features, self.targets, self.atom_targets, self.bond_targets
         self.raw_atom_descriptors, self.raw_atom_features, self.raw_bond_descriptors, self.raw_bond_features = \
             self.atom_descriptors, self.atom_features, self.bond_descriptors, self.bond_features
-
-        # Use vocabularies to featurize ec_words and tax_words
-        self.ec_features = []
-        self.tax_features = []
-
-        ec_words = ['ec1','ec2','ec3','ec']
-        tax_words = ['superkingdom','phylum','class','order','family','genus','species']
-        for word in ec_words:
-            now = str(row[word])
-            inte = int(self.vocabulary[word][now]) if now in vocabulary[word] else 0
-            self.ec_features.append(inte)
-        for word in tax_words:
-            now = str(row[word])
-            inte = int(self.vocabulary[word][now]) if now in vocabulary[word] else 0
-            self.tax_features.append(inte)
             
     @property
     def mol(self) -> List[Union[Chem.Mol, Tuple[Chem.Mol, Chem.Mol]]]:
@@ -442,8 +429,8 @@ class MoleculeDataset(Dataset):
             self._batch_graph = []
 
             mol_graphs = []
-            embeds = []
             seq_feats = []
+            seq_tokens= []
             for d in self._data:
                 mol_graphs_list = []
                 for s, m in zip(d.smiles, d.mol):
@@ -461,10 +448,10 @@ class MoleculeDataset(Dataset):
                             SMILES_TO_GRAPH[s] = mol_graph
                     mol_graphs_list.append(mol_graph)
                 mol_graphs.append(mol_graphs_list)
-                embeds.append(d.ec_features+d.tax_features)
                 seq_feats.append(d.sequence_features)
+                seq_tokens.append(d.sequence_tokens)
             
-            self._batch_graph = [BatchMolGraph([g[i] for g in mol_graphs],embeds,seq_feats) for i in range(len(mol_graphs[0]))]
+            self._batch_graph = [BatchMolGraph([g[i] for g in mol_graphs],seq_feats,seq_tokens) for i in range(len(mol_graphs[0]))]
 
         return self._batch_graph
 

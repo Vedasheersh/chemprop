@@ -191,6 +191,8 @@ class MPNEncoder(nn.Module):
 
         mol_vecs = torch.stack(mol_vecs, dim=0)  # (num_molecules, hidden_size)
 
+        # print(self, mol_vecs.shape)
+        
         return mol_vecs  # num_molecules x hidden
 
 
@@ -208,6 +210,7 @@ class MPN(nn.Module):
         """
         super(MPN, self).__init__()
         self.reaction = args.reaction
+        self.reaction_substrate = args.reaction_substrate
         self.reaction_solvent = args.reaction_solvent
         self.atom_fdim = atom_fdim or get_atom_fdim(overwrite_default_atom=args.overwrite_default_atom_features,
                                                     is_reaction=self.reaction if self.reaction is not False else self.reaction_solvent)
@@ -317,6 +320,10 @@ class MPN(nn.Module):
         else:
             if not self.reaction_solvent:
                 encodings = [enc(ba) for enc, ba in zip(self.encoder, batch)]
+            elif self.reaction_substrate and self.reaction_solvent:
+                encodings = []
+                encodings.append(self.encoder(ba))
+                encodings.append(self.encoder_solvent(ba))
             else:
                 encodings = []
                 for ba in batch:

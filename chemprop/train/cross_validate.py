@@ -75,8 +75,6 @@ def cross_validate(args: TrainArgs,
     debug('Loading data')
     data = get_data(
         path=args.data_path,
-        vocabulary_path=args.vocabulary_path,
-        sequence_features_path=args.sequence_features_path,
         args=args,
         logger=logger,
         skip_none_targets=True,

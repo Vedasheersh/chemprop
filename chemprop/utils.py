@@ -119,6 +119,7 @@ def load_checkpoint(
 
     # Build model
     model = MoleculeModel(args)
+    print(model)
     model_state_dict = model.state_dict()
 
     # Skip missing parameters and parameters of mismatched size
@@ -232,9 +233,26 @@ def load_frzn_model(
             "encoder.encoder.0.W_o_b.weight",
             "encoder.encoder.0.W_o_b.bias",
         ]
+        embed_param_names = [
+            "embed_model.embed_module.0.weight",
+            "embed_model.embed_module.1.weight",
+            "embed_model.embed_module.2.weight",
+            "embed_model.embed_module.3.weight",
+            "embed_model.embed_module.4.weight",
+            "embed_model.embed_module.5.weight",
+            "embed_model.embed_module.6.weight",
+            "embed_model.embed_module.7.weight",
+            "embed_model.embed_module.8.weight",
+            "embed_model.embed_module.9.weight",
+            "embed_model.embed_module.10.weight",
+            "embed_model.mlp_module.1.weight",
+            "embed_model.mlp_module.1.bias",
+            "embed_model.mlp_module.4.weight",
+            "embed_model.mlp_module.4.bias"
+        ]
         if current_args.checkpoint_frzn is not None:
             # Freeze the MPNN
-            for param_name in encoder_param_names:
+            for param_name in encoder_param_names + embed_param_names:
                 model_state_dict = overwrite_state_dict(
                     param_name, param_name, loaded_state_dict, model_state_dict
                 )
@@ -763,19 +781,25 @@ def update_prediction_args(
     for key, value in vars(train_args).items():
         if not hasattr(predict_args, key):
             setattr(predict_args, key, value)
-
     if missing_to_defaults:
         # If a default argument would cause different behavior than occurred in legacy checkpoints before the argument existed,
         # then that argument must be included in the `override_defaults` dictionary to force the legacy behavior.
+        
         override_defaults = {
             "bond_descriptors_scaling": False,
             "no_bond_descriptors_scaling": True,
             "atom_descriptors_scaling": False,
             "no_atom_descriptors_scaling": True,
         }
+                
         default_train_args = TrainArgs().parse_args(
-            ["--data_path", None, "--dataset_type", str(train_args.dataset_type)]
+            ["--data_path", None, "--dataset_type", str(train_args.dataset_type), 
+             "--vocabulary_path", str(train_args.vocabulary_path),
+             "--sequence_features_path",str(train_args.sequence_features_path)]
         )
+        
+        # print(default_train_args)
+
         for key, value in vars(default_train_args).items():
             if not hasattr(predict_args, key):
                 setattr(predict_args, key, override_defaults.get(key, value))

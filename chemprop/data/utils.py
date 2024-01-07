@@ -8,12 +8,15 @@ from random import Random
 from typing import List, Set, Tuple, Union
 import os
 import json
+import torch
 
 from rdkit import Chem
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
+import ipdb
 
+from .esm_utils import get_protein_embedder
 from .data import MoleculeDatapoint, MoleculeDataset, make_mols
 from .scaffold import log_scaffold_stats, scaffold_split
 from chemprop.args import PredictArgs, TrainArgs
@@ -341,8 +344,6 @@ def get_invalid_smiles_from_list(smiles: List[List[str]], reaction: bool = False
 
 
 def get_data(path: str,
-             vocabulary_path: str,
-             sequence_features_path: str,
              smiles_columns: Union[str, List[str]] = None,
              target_columns: List[str] = None,
              ignore_columns: List[str] = None,
@@ -364,8 +365,6 @@ def get_data(path: str,
     Gets SMILES and target values from a CSV file.
 
     :param path: Path to a CSV file.
-    :param vocabulary_path: Path to a JSON file of ec and tax. word vocabulary.
-    :param sequence_features_path: Path to a pkl file of 1D sequence features dictionary. 
     :param smiles_columns: The names of the columns containing SMILES.
                            By default, uses the first :code:`number_of_molecules` columns.
     :param target_columns: Name of the columns containing target values. By default, uses all columns
@@ -467,16 +466,9 @@ def get_data(path: str,
     else:
         gt_targets, lt_targets = None, None
 
-    # Load vocabulary
-    vocabulary = json.load(open(vocabulary_path))
-    ec_words = ['ec1','ec2','ec3','ec']
-    tax_words = ['superkingdom','phylum','class','order','family','genus','species']
-    # get vocab sizes
-    args.embed_sizes = [len(vocabulary[word]) for word in ec_words+tax_words]
-    
     # Load sequence features
     if args.include_sequence_features:
-        sequence_features_dict = pickle.load(sequence_features_path)
+        sequence_feat_getter, sequence_token_getter = get_protein_embedder('esm')['fn'], get_protein_embedder('esm')['tokenizer']
                  
     # Load data
     smoke_test_counter = 0
@@ -488,18 +480,23 @@ def get_data(path: str,
         if any([c not in fieldnames for c in target_columns]):
             raise ValueError(f'Data file did not contain all provided target columns: {target_columns}. Data file field names are: {fieldnames}')
 
-        all_smiles, all_targets, all_atom_targets, all_bond_targets, all_rows, all_features, all_phase_features, all_constraints_data, all_raw_constraints_data, all_weights, all_gt, all_lt = [], [], [], [], [], [], [], [], [], [], [], []
-        all_sequence_features = []
+        all_smiles, all_sequences, all_targets, all_atom_targets, all_bond_targets, all_rows, all_features, all_phase_features, all_constraints_data, all_raw_constraints_data, all_weights, all_gt, all_lt = [], [], [], [], [], [], [], [], [], [], [], [], []
+        all_sequence_features, all_sequence_tokens = [], []
         for i, row in enumerate(tqdm(reader)):
             smoke_test_counter+=1
             if args.smoke_test: 
-                if smoke_test_counter>1000: break
+                if smoke_test_counter>100: break
             smiles = [row[c] for c in smiles_columns]
             sequence = row['sequence']
             if args.include_sequence_features: 
-                sequence_features = sequence_features_dict[sequence]
+                # print('Sequence:',sequence)
+                sequence_features, _ = sequence_feat_getter(sequence, device = 'cpu')
+                sequence_tokens = sequence_token_getter(sequence, device = 'cpu')
+                sequence_features = sequence_features[0] #batch dim
+                sequence_tokens = sequence_tokens[0]
             else:
                 sequence_features = None
+                sequence_tokens = None
             targets, atom_targets, bond_targets = [], [], []
             for column in target_columns:
                 value = row[column]
@@ -535,7 +532,15 @@ def get_data(path: str,
             if skip_none_targets and all(x is None for x in targets):
                 continue
 
-            if args.include_sequence_features: all_sequence_features.append(sequence_features)
+            if args.include_sequence_features: 
+                all_sequence_features.append(sequence_features)
+                all_sequence_tokens.append(sequence_tokens)
+                all_sequences.append(sequence)
+            else:
+                all_sequences.append(None)
+                all_sequence_tokens.append(None)
+                all_sequence_features.append(None)
+                
             all_smiles.append(smiles)
             all_targets.append(targets)
             all_atom_targets.append(atom_targets)
@@ -597,9 +602,9 @@ def get_data(path: str,
         data = MoleculeDataset([
             MoleculeDatapoint(
                 smiles=smiles,
-                vocabulary=vocabulary,
-                sequence=sequence,
-                sequence_features=sequence_features,
+                sequence=all_sequences[i],
+                sequence_features=all_sequence_features[i],
+                sequence_tokens=all_sequence_tokens[i],
                 targets=targets,
                 atom_targets=all_atom_targets[i] if atom_targets else None,
                 bond_targets=all_bond_targets[i] if bond_targets else None,
@@ -864,6 +869,14 @@ def split_data(data: MoleculeDataset,
         test = MoleculeDataset([sorted_data[i] for i in test_indices])
 
         return train, val, test
+    
+    elif split_type == 'catpred': #split indices already in data
+        # Create MoleculeDataset for each split
+        train = MoleculeDataset([d for d in data._data if d.row['split']=='train'])
+        val = MoleculeDataset([d for d in data._data if d.row['split']=='val'])
+        test = MoleculeDataset([d for d in data._data if d.row['split']=='test'])
+        return train, val, test
+    
     else:
         raise ValueError(f'split_type "{split_type}" not supported.')
 
