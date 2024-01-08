@@ -495,9 +495,6 @@ class MoleculeModel(nn.Module):
                 
                 esm_if_out = self.esm_model.encoder.forward(coords, padding_mask, confidence, 
                                                             return_all_hiddens=False)
-                padding_mask.detach()
-                confidence.detach()
-                coords.detach()
                 # ipdb.set_trace()
                 esm_if_out = esm_if_out['encoder_out'][0][1:-1,]
                 esm_if_out = esm_if_out.reshape((esm_if_out.shape[1], esm_if_out.shape[0], esm_if_out.shape[-1]))
