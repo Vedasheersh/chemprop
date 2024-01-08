@@ -221,6 +221,13 @@ class MoleculeModel(nn.Module):
 
         :param args: A :class:`~chemprop.args.TrainArgs` object containing model arguments.
         """
+        from torch import nn
+        class Identity(nn.Module):
+            def __init__(self):
+                super(Identity, self).__init__()
+
+            def forward(self, x, ):
+                return x
         import esm
         import esm.inverse_folding as esm_if
         self.esm_model, self.esm_alphabet = esm.pretrained.esm_if1_gvp4_t16_142M_UR50()
@@ -229,6 +236,8 @@ class MoleculeModel(nn.Module):
         # self.esm_model, alphabet = esm.pretrained.esm2_t6_8M_UR50D()
         # self.esm_model = ESM2(6, 120, 6, alphabet)
         self.esm_model = self.esm_model.to(self.device)#ESM2(6, 1280, 20, alphabet)
+        self.esm_model.encoder.layers = nn.ModuleList([])
+        self.esm_model.encoder.layer_norm = None
         dim = self.esm_model.encoder.embed_tokens.embedding_dim
         attn_layer = AttentivePooling(dim, dim)
         self.sequence_attention = attn_layer
@@ -483,11 +492,15 @@ class MoleculeModel(nn.Module):
                 coord_batch = [(c,None,None) for c in coord_list]
                 coords, confidence, strs, tokens, padding_mask = self.batch_converter(coord_batch,
                                                                                       device=self.device)
-                # ipdb.set_trace()
+                
                 esm_if_out = self.esm_model.encoder.forward(coords, padding_mask, confidence, 
                                                             return_all_hiddens=False)
+                padding_mask.detach()
+                confidence.detach()
+                coords.detach()
+                # ipdb.set_trace()
                 esm_if_out = esm_if_out['encoder_out'][0][1:-1,]
-                esm_if_out = esm_if_out.view((esm_if_out.shape[1], esm_if_out.shape[0], esm_if_out.shape[-1]))
+                esm_if_out = esm_if_out.reshape((esm_if_out.shape[1], esm_if_out.shape[0], esm_if_out.shape[-1]))
                 
                 # sequence_feature_arr = pad_sequence(sequence_feature_arr,batch_first=True).to(self.device)
                 # sequence_token_arr = pad_sequence(sequence_token_arr,
