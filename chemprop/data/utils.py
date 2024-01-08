@@ -16,7 +16,7 @@ import pandas as pd
 from tqdm import tqdm
 import ipdb
 
-from .esm_utils import get_protein_embedder
+from .esm_utils import get_protein_embedder, get_coords
 from .data import MoleculeDatapoint, MoleculeDataset, make_mols
 from .scaffold import log_scaffold_stats, scaffold_split
 from chemprop.args import PredictArgs, TrainArgs
@@ -469,6 +469,7 @@ def get_data(path: str,
     # Load sequence features
     if args.include_sequence_features:
         sequence_feat_getter, sequence_token_getter = get_protein_embedder('esm')['fn'], get_protein_embedder('esm')['tokenizer']
+        coord_getter = get_coords
                  
     # Load data
     smoke_test_counter = 0
@@ -481,22 +482,27 @@ def get_data(path: str,
             raise ValueError(f'Data file did not contain all provided target columns: {target_columns}. Data file field names are: {fieldnames}')
 
         all_smiles, all_sequences, all_targets, all_atom_targets, all_bond_targets, all_rows, all_features, all_phase_features, all_constraints_data, all_raw_constraints_data, all_weights, all_gt, all_lt = [], [], [], [], [], [], [], [], [], [], [], [], []
-        all_sequence_features, all_sequence_tokens = [], []
+        all_sequence_features, all_sequence_tokens, all_coords = [], [], []
         for i, row in enumerate(tqdm(reader)):
             smoke_test_counter+=1
             if args.smoke_test: 
                 if smoke_test_counter>100: break
             smiles = [row[c] for c in smiles_columns]
             sequence = row['sequence']
+            pdbpath = row['pdbpath']
             if args.include_sequence_features: 
                 # print('Sequence:',sequence)
                 sequence_features, _ = sequence_feat_getter(sequence, device = 'cpu')
-                sequence_tokens = sequence_token_getter(sequence, device = 'cpu')
+                sequence_tokens = None#sequence_token_getter(sequence, device = 'cpu')
+                coords = coord_getter(pdbpath)
                 sequence_features = sequence_features[0] #batch dim
-                sequence_tokens = sequence_tokens[0]
+                #sequence_tokens = sequence_tokens[0]
+                coords = coords[0]
             else:
                 sequence_features = None
                 sequence_tokens = None
+                coords = None
+                
             targets, atom_targets, bond_targets = [], [], []
             for column in target_columns:
                 value = row[column]
@@ -536,10 +542,12 @@ def get_data(path: str,
                 all_sequence_features.append(sequence_features)
                 all_sequence_tokens.append(sequence_tokens)
                 all_sequences.append(sequence)
+                all_coords.append(coords)
             else:
                 all_sequences.append(None)
                 all_sequence_tokens.append(None)
                 all_sequence_features.append(None)
+                all_coords.append(None)
                 
             all_smiles.append(smiles)
             all_targets.append(targets)
@@ -605,6 +613,7 @@ def get_data(path: str,
                 sequence=all_sequences[i],
                 sequence_features=all_sequence_features[i],
                 sequence_tokens=all_sequence_tokens[i],
+                coords=all_coords[i],
                 targets=targets,
                 atom_targets=all_atom_targets[i] if atom_targets else None,
                 bond_targets=all_bond_targets[i] if bond_targets else None,

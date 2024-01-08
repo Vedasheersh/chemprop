@@ -6,6 +6,7 @@ from functools import partial
 import esm
 from torch.nn.utils.rnn import pad_sequence
 from .cache_utils import cache_fn, run_once, md5_hash_fn
+import esm.inverse_folding as esm_if
 
 def exists(val):
     return val is not None
@@ -121,6 +122,16 @@ def init_esm():
 
     GLOBAL_VARIABLES['model'] = (model, batch_converter)
 
+@run_once('init_esm_if')
+def init_esm_if():
+    model, alphabet = esm.pretrained.esm_if1_gvp4_t16_142M_UR50()
+    batch_converter = esm_if.util.CoordBatchConverter(alphabet, 2048)
+
+    if not PROTEIN_EMBED_USE_CPU:
+        model = model.cuda()
+
+    GLOBAL_VARIABLES['esmif_model'] = (model, batch_converter)
+
 def get_single_esm_repr(protein_str):
     init_esm()
     model, batch_converter = GLOBAL_VARIABLES['model']
@@ -151,6 +162,13 @@ def get_esm_repr(proteins, device):
 
     return calc_protein_representations_with_subunits([proteins], get_protein_repr_fn, device = device)
 
+def get_coords(pdbpath):
+    #init_esm_if()
+    #model, batch_converter = GLOBAL_VARIABLES['esmif_model']
+    addpath = '/home/ubuntu/CatPred-DB/CatPred-DB/'
+    coords = esm_if.util.load_coords(addpath+pdbpath, 'A')
+    return coords
+    
 def get_esm_tokens(protein_str, device):
     if isinstance(protein_str, torch.Tensor):
         proteins = tensor_to_aa_str(proteins)

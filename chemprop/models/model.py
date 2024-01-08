@@ -208,7 +208,7 @@ class MoleculeModel(nn.Module):
         :param args: A :class:`~chemprop.args.TrainArgs` object containing model arguments.
         """
         self.sequence_model = build_ffn(
-                            first_linear_dim = 1280+120,
+                            first_linear_dim = 512,
                             hidden_size = args.sequence_mlp_hidden_size,
                             num_layers = args.sequence_mlp_num_layers,
                             output_size = args.sequence_mlp_output_size,
@@ -222,11 +222,15 @@ class MoleculeModel(nn.Module):
         :param args: A :class:`~chemprop.args.TrainArgs` object containing model arguments.
         """
         import esm
-        from esm.model.esm2 import ESM2
-        self.esm_model, alphabet = esm.pretrained.esm2_t6_8M_UR50D()
-        self.esm_model = ESM2(6, 120, 6, alphabet)
+        import esm.inverse_folding as esm_if
+        self.esm_model, self.esm_alphabet = esm.pretrained.esm_if1_gvp4_t16_142M_UR50()
+        self.batch_converter = esm_if.util.CoordBatchConverter(self.esm_alphabet, 2048)
+        # from esm.model.esm2 import ESM2
+        # self.esm_model, alphabet = esm.pretrained.esm2_t6_8M_UR50D()
+        # self.esm_model = ESM2(6, 120, 6, alphabet)
         self.esm_model = self.esm_model.to(self.device)#ESM2(6, 1280, 20, alphabet)
-        attn_layer = AttentivePooling(self.esm_model.embed_dim+1280, self.esm_model.embed_dim+1280)
+        dim = self.esm_model.encoder.embed_tokens.embedding_dim
+        attn_layer = AttentivePooling(dim, dim)
         self.sequence_attention = attn_layer
         #         self.protein_self_attns = nn.ModuleList([])
 
@@ -475,14 +479,25 @@ class MoleculeModel(nn.Module):
             if self.args.include_sequence_features:
                 sequence_feature_arr = batch[-1].sequence_feature_list
                 sequence_token_arr = batch[-1].sequence_token_list
-                sequence_feature_arr = pad_sequence(sequence_feature_arr,batch_first=True).to(self.device)
-                sequence_token_arr = pad_sequence(sequence_token_arr,
-                                                  padding_value=1,batch_first=True).to(self.device)
+                coord_list = batch[-1].coord_list
+                coord_batch = [(c,None,None) for c in coord_list]
+                coords, confidence, strs, tokens, padding_mask = self.batch_converter(coord_batch,
+                                                                                      device=self.device)
+                # ipdb.set_trace()
+                esm_if_out = self.esm_model.encoder.forward(coords, padding_mask, confidence, 
+                                                            return_all_hiddens=False)
+                esm_if_out = esm_if_out['encoder_out'][0][1:-1,]
+                esm_if_out = esm_if_out.view((esm_if_out.shape[1], esm_if_out.shape[0], esm_if_out.shape[-1]))
+                
+                # sequence_feature_arr = pad_sequence(sequence_feature_arr,batch_first=True).to(self.device)
+                # sequence_token_arr = pad_sequence(sequence_token_arr,
+                #                                   padding_value=1,batch_first=True).to(self.device)
                 # for self_attn_block in self.protein_self_attns:
                 #     sequence_feature_arr = self_attn_block(sequence_feature_arr)
                 
-                sequence_output = self.esm_model(sequence_token_arr,repr_layers=[len(self.esm_model.layers)])['representations'][len(self.esm_model.layers)][:, 1: len(sequence_feature_arr[0]) + 1, :]
-                sequence_output, sequence_weights = self.sequence_attention(torch.cat([sequence_feature_arr,sequence_output],dim=-1))
+                # sequence_output = self.esm_model(sequence_token_arr,repr_layers=[len(self.esm_model.layers)])['representations'][len(self.esm_model.layers)][:, 1: len(sequence_feature_arr[0]) + 1, :]
+                # sequence_output, sequence_weights = self.sequence_attention(torch.cat([sequence_feature_arr,sequence_output],dim=-1))
+                sequence_output, sequence_weights = self.sequence_attention(esm_if_out)
                 
                 sequence_output = self.sequence_model(sequence_output)
                 encodings = torch.concat([encodings,sequence_output],dim=-1)
