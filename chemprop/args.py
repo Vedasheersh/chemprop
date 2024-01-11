@@ -369,34 +369,30 @@ class TrainArgs(CommonArgs):
     """Number of layers in FFN after MPN encoding."""
     features_only: bool = False
     """Use only the additional features in an FFN, no graph network."""
-    include_sequence_features: bool = False
-    """ Whether to use sequence features"""
-    include_embed_features: bool = False
-    """ Whether to use embed features"""
-    sequence_feat_size: int = 1280
+    protein_records_path: str = None
+    """ Path to protein records json file """
+    skip_gvp: bool = False
+    """ Skip GVP or not """
+    gvp_num_layers: int = 3
+    """ NUm of gvp layers """
+    gvp_node_hidden_dims: List[int] = [200, 100]
+    """ GVP hidden dims for nodes """
+    gvp_edge_hidden_dims: List[int] = [100, 30]
+    """ GVP hidden dims for edges """
+    gvp_seq_embed_dim: int = 100
+    """ GVP sequence embed dim"""
+    use_esm_feats_gvp: bool = False
+    """ Whether to append esm features in GVP """
+    esm_feat_size: int = 1280
     """ sequence feature size to input sequence model."""
-    sequence_mlp_hidden_size: int = 640
-    """ MLP hidden size for sequence model."""
-    sequence_mlp_num_layers: int = 2
-    """ Number of MLP layers for sequence model"""
-    sequence_mlp_output_size: int = 320 
-    """ MLP output size for sequence model """
-    sequence_mlp_dropout: float = 0.0
+    protein_mlp_hidden_size: int = 600
+    """ MLP hidden size for protein output model."""
+    protein_mlp_num_layers: int = 2
+    """ Number of MLP layers for protein output model"""
+    protein_mlp_output_size: int = 300 
+    """ MLP output size for protein output model """
+    protein_mlp_dropout: float = 0.0
     """ dropout for MLP layers in sequence model"""
-    embed_sizes: List[int] = None
-    """ List of embedding layer sizes"""
-    embed_size_to_dim_power: float = 0.33
-    """ Power to scale size to dimension of embedding layers"""
-    embed_dropout: float = 0.0
-    """ dropout to use in embedding model for embedding layers """
-    embed_mlp_hidden_size: int = 200
-    """ Embedding layers MLP hidden size"""
-    embed_mlp_num_layers: int = 2
-    """ Number of MLP layers for embedding model"""
-    embed_mlp_output_size: int = 200 
-    """ MLP output size for embedding model """
-    embed_mlp_dropout: float = 0.0
-    """ dropout for MLP layers in embedding model"""
     separate_val_features_path: List[str] = None
     """Path to file with features for separate val set."""
     separate_test_features_path: List[str] = None

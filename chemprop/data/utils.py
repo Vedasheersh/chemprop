@@ -344,6 +344,7 @@ def get_invalid_smiles_from_list(smiles: List[List[str]], reaction: bool = False
 
 
 def get_data(path: str,
+             protein_records_path: str = None,
              smiles_columns: Union[str, List[str]] = None,
              target_columns: List[str] = None,
              ignore_columns: List[str] = None,
@@ -365,6 +366,7 @@ def get_data(path: str,
     Gets SMILES and target values from a CSV file.
 
     :param path: Path to a CSV file.
+    :param protein_records_path: Path to a json file of protein records.
     :param smiles_columns: The names of the columns containing SMILES.
                            By default, uses the first :code:`number_of_molecules` columns.
     :param target_columns: Name of the columns containing target values. By default, uses all columns
@@ -392,6 +394,11 @@ def get_data(path: str,
     """
     debug = logger.debug if logger is not None else print
 
+    if protein_records_path is None:
+        protein_records = None
+    else:
+        protein_records = json.load(open(protein_records_path))
+    
     if args is not None:
         # Prefer explicit function arguments but default to args if not provided
         smiles_columns = smiles_columns if smiles_columns is not None else args.smiles_columns
@@ -467,9 +474,8 @@ def get_data(path: str,
         gt_targets, lt_targets = None, None
 
     # Load sequence features
-    if args.include_sequence_features:
-        sequence_feat_getter, sequence_token_getter = get_protein_embedder('esm')['fn'], get_protein_embedder('esm')['tokenizer']
-        coord_getter = get_coords
+    if not protein_records is None:
+        sequence_feat_getter = get_protein_embedder('esm')['fn']
                  
     # Load data
     smoke_test_counter = 0
@@ -482,26 +488,22 @@ def get_data(path: str,
             raise ValueError(f'Data file did not contain all provided target columns: {target_columns}. Data file field names are: {fieldnames}')
 
         all_smiles, all_sequences, all_targets, all_atom_targets, all_bond_targets, all_rows, all_features, all_phase_features, all_constraints_data, all_raw_constraints_data, all_weights, all_gt, all_lt = [], [], [], [], [], [], [], [], [], [], [], [], []
-        all_sequence_features, all_sequence_tokens, all_coords = [], [], []
+        all_protein_records = []
         for i, row in enumerate(tqdm(reader)):
             smoke_test_counter+=1
             if args.smoke_test: 
                 if smoke_test_counter>100: break
             smiles = [row[c] for c in smiles_columns]
-            sequence = row['sequence']
             pdbpath = row['pdbpath']
-            if args.include_sequence_features: 
-                # print('Sequence:',sequence)
-                sequence_features, _ = sequence_feat_getter(sequence, device = 'cpu')
-                sequence_tokens = None#sequence_token_getter(sequence, device = 'cpu')
-                coords = coord_getter(pdbpath)
-                sequence_features = sequence_features[0] #batch dim
-                #sequence_tokens = sequence_tokens[0]
-                coords = coords[0]
+            pdbname = pdbpath.split("/")[-1]
+            protein_record = protein_records[pdbname]
+            if not protein_records is None: 
+                sequence_features, _ = sequence_feat_getter(protein_record['seq'], 
+                                                            name = pdbname, 
+                                                            device = 'cpu')
+                protein_record['esm2_feats'] = sequence_features[0] #batch dim
             else:
-                sequence_features = None
-                sequence_tokens = None
-                coords = None
+                protein_record = None
                 
             targets, atom_targets, bond_targets = [], [], []
             for column in target_columns:
@@ -538,16 +540,10 @@ def get_data(path: str,
             if skip_none_targets and all(x is None for x in targets):
                 continue
 
-            if args.include_sequence_features: 
-                all_sequence_features.append(sequence_features)
-                all_sequence_tokens.append(sequence_tokens)
-                all_sequences.append(sequence)
-                all_coords.append(coords)
+            if not protein_records is None: 
+                all_protein_records.append(protein_record)
             else:
-                all_sequences.append(None)
-                all_sequence_tokens.append(None)
-                all_sequence_features.append(None)
-                all_coords.append(None)
+                all_protein_records.append(None)
                 
             all_smiles.append(smiles)
             all_targets.append(targets)
@@ -610,10 +606,7 @@ def get_data(path: str,
         data = MoleculeDataset([
             MoleculeDatapoint(
                 smiles=smiles,
-                sequence=all_sequences[i],
-                sequence_features=all_sequence_features[i],
-                sequence_tokens=all_sequence_tokens[i],
-                coords=all_coords[i],
+                protein_record=all_protein_records[i],
                 targets=targets,
                 atom_targets=all_atom_targets[i] if atom_targets else None,
                 bond_targets=all_bond_targets[i] if bond_targets else None,

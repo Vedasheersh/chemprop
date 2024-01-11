@@ -57,10 +57,7 @@ class MoleculeDatapoint:
 
     def __init__(self,
                  smiles: List[str],
-                 sequence: str = None,
-                 sequence_features: np.ndarray = None,
-                 sequence_tokens = None,
-                 coords = None,
+                 protein_record = None,
                  targets: List[Optional[float]] = None,
                  atom_targets: List[Optional[float]] = None,
                  bond_targets: List[Optional[float]] = None,
@@ -81,10 +78,7 @@ class MoleculeDatapoint:
                  overwrite_default_bond_features: bool = False):
         """
         :param smiles: A list of the SMILES strings for the molecules.
-        :param sequence: The amino acid sequence of enzyme.
-        :param sequence_features: A numpy array of pre-calculated 1D sequence features. 
-        :param sequence_tokens: Tokens esm
-        :param coords: coords
+        :param protein_record: Record of the protein seq, coords etc.
         :param targets: A list of targets for the molecule (contains None for unknown target values).
         :param atom_targets: A list of targets for the atomic properties.
         :param bond_targets: A list of targets for the bond properties.
@@ -104,10 +98,7 @@ class MoleculeDatapoint:
 
         """
         self.smiles = smiles
-        self.sequence = sequence
-        self.sequence_features = sequence_features
-        self.sequence_tokens = sequence_tokens
-        self.coords = coords
+        self.protein_record = protein_record
         self.targets = targets
         self.atom_targets = atom_targets
         self.bond_targets = bond_targets
@@ -432,9 +423,7 @@ class MoleculeDataset(Dataset):
             self._batch_graph = []
 
             mol_graphs = []
-            seq_feats = []
-            coord_list = []
-            seq_tokens= []
+            protein_record_list = []
             for d in self._data:
                 mol_graphs_list = []
                 for s, m in zip(d.smiles, d.mol):
@@ -452,11 +441,9 @@ class MoleculeDataset(Dataset):
                             SMILES_TO_GRAPH[s] = mol_graph
                     mol_graphs_list.append(mol_graph)
                 mol_graphs.append(mol_graphs_list)
-                seq_feats.append(d.sequence_features)
-                seq_tokens.append(d.sequence_tokens)
-                coord_list.append(d.coords)
+                protein_record_list.append(d.protein_record)
             
-            self._batch_graph = [BatchMolGraph([g[i] for g in mol_graphs],seq_feats,seq_tokens,coord_list) for i in range(len(mol_graphs[0]))]
+            self._batch_graph = [BatchMolGraph([g[i] for g in mol_graphs],protein_record_list) for i in range(len(mol_graphs[0]))]
 
         return self._batch_graph
 

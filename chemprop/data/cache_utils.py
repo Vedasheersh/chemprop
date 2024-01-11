@@ -10,7 +10,7 @@ def exists(val):
 
 # constants
 
-CACHE_PATH = Path(os.getenv('CHEMPROP_CACHE_PATH', os.path.expanduser('~/.cache.embeddings')))
+CACHE_PATH = Path(os.getenv('CHEMPROP_CACHE_PATH', os.path.expanduser('~/.cache.esm2_embeddings')))
 CACHE_PATH.mkdir(exist_ok = True, parents = True)
 
 CLEAR_CACHE = exists(os.getenv('CLEAR_CACHE', None))
@@ -62,6 +62,7 @@ def run_once(global_id = None):
 def cache_fn(
     fn,
     path = '',
+    name = None,
     hash_fn = md5_hash_fn,
     clear = False or CLEAR_CACHE,
     should_cache = True
@@ -81,8 +82,11 @@ def cache_fn(
         if clear:
             clear_cache_folder_()
 
-        cache_str = __cache_key if exists(__cache_key) else t
-        key = hash_fn(cache_str)
+        if name is None: 
+            cache_str = __cache_key if exists(__cache_key) else t
+            key = hash_fn(cache_str)
+        else:
+            key = name
 
         entry_path = CACHE_PATH / path / f'{key}.pt'
 
@@ -95,4 +99,5 @@ def cache_fn(
         log(f'saving: {t} to {str(entry_path)}')
         torch.save(out, str(entry_path))
         return out
+        
     return inner

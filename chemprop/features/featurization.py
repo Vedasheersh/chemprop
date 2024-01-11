@@ -529,18 +529,13 @@ class BatchMolGraph:
     """
 
     def __init__(self, mol_graphs: List[MolGraph],
-                 sequence_feature_list: List[np.ndarray],
-                sequence_token_list, coord_list):
+                 protein_record_list):
         r"""
         :param mol_graphs: A list of :class:`MolGraph`\ s from which to construct the :class:`BatchMolGraph`.
-        :param sequence_feature_list: A list of arrays of seq_features corresponding to mol_graphs.
-        :param sequence_token_list: A list of tokens
-        :param coord_list: A list of coords
+        :param protein_record_list: A list of protein_records
         """
         self.mol_graphs = mol_graphs
-        self.sequence_feature_list = sequence_feature_list
-        self.sequence_token_list = sequence_token_list
-        self.coord_list = coord_list
+        self.protein_record_list = protein_record_list
         self.overwrite_default_atom_features = mol_graphs[0].overwrite_default_atom_features
         self.overwrite_default_bond_features = mol_graphs[0].overwrite_default_bond_features
         self.is_reaction = mol_graphs[0].is_reaction

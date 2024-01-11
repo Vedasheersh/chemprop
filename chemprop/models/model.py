@@ -4,9 +4,12 @@ import numpy as np
 from rdkit import Chem
 import torch
 import torch.nn as nn
+import torch_geometric
 
 from .mpn import MPN
 from .ffn import build_ffn, MultiReadout
+from chemprop.data import ProteinGraphDataset
+from .gvp_models import GVPEmbedderModel
 from chemprop.args import TrainArgs
 from chemprop.features import BatchMolGraph
 from chemprop.nn_utils import initialize_weights
@@ -29,84 +32,6 @@ def exists(val):
 
 def default(val, d):
     return val if exists(val) else d
-
-# classes
-
-def FeedForward(dim, mult = 1, dropout = 0.):
-    return nn.Sequential(
-        nn.LayerNorm(dim),
-        nn.Linear(dim, dim * mult),
-        nn.GELU(),
-        nn.Dropout(dropout),
-        nn.Linear(dim * mult, dim)
-    )
-
-# self attention
-
-class SelfAttention(nn.Module):
-    def __init__(
-        self,
-        *,
-        dim,
-        heads = 8,
-        dim_head = 64,
-        dropout = 0.
-    ):
-        super().__init__()
-        self.norm = nn.LayerNorm(dim)
-
-        self.heads = heads
-        self.scale = dim_head ** -0.5
-        inner_dim = dim_head * heads
-
-        self.to_qkv = nn.Linear(dim, inner_dim * 3, bias = False)
-        self.to_out = nn.Linear(inner_dim, dim)
-
-        self.dropout = nn.Dropout(dropout)
-
-    def forward(
-        self,
-        x,
-        mask = None,
-    ):
-        h = self.heads
-        x = self.norm(x)
-
-        q, k, v = self.to_qkv(x).chunk(3, dim = -1)
-        q = q * self.scale
-
-        q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = h), (q, k, v))
-        sim = einsum('b h i d, b h j d -> b h i j', q, k)
-
-        if exists(mask):
-            mask_value = -torch.finfo(sim.dtype).max
-            mask = rearrange(mask, 'b j -> b 1 1 j')
-            sim = sim.masked_fill(~mask, mask_value)
-
-        attn = sim.softmax(dim = -1)
-        attn = self.dropout(attn)
-
-        out = einsum('b h i j, b h j d -> b h i d', attn, v)
-        out = rearrange(out, 'b h n d -> b n (h d)')
-        return self.to_out(out)
-
-class SelfAttentionBlock(nn.Module):
-    def __init__(
-        self,
-        *,
-        dim,
-        dropout = 0.,
-        ff_mult = 1,
-        **kwargs
-    ):
-        super().__init__()
-        self.attn = SelfAttention(dim = dim, dropout = dropout, **kwargs)
-        self.ff = FeedForward(dim = dim, mult = ff_mult, dropout = dropout)
-
-    def forward(self, x, mask = None):
-        x = self.attn(x, mask = mask) + x
-        x = self.ff(x) + x
-        return x
     
 class AttentivePooling(nn.Module):
     def __init__(self, input_size=1280, hidden_size=1280):
@@ -191,15 +116,13 @@ class MoleculeModel(nn.Module):
 
         self.create_encoder(args)
         
-        if args.include_sequence_features: 
-            print('Creating sequence model')
-            self.create_sequence_model(args)
+        print('Creating sequence model')
+        self.create_sequence_model(args)
         self.create_ffn(args)
 
         initialize_weights(self)
-        if args.include_sequence_features: 
-            print('Creating attentive sequence model')
-            self.create_attentive_sequence_model(args)
+        print('Creating graph sequence model')
+        self.create_graph_sequence_model(args)
 
     def create_sequence_model(self, args: TrainArgs) -> None:
         """
@@ -208,47 +131,32 @@ class MoleculeModel(nn.Module):
         :param args: A :class:`~chemprop.args.TrainArgs` object containing model arguments.
         """
         self.sequence_model = build_ffn(
-                            first_linear_dim = 512,
-                            hidden_size = args.sequence_mlp_hidden_size,
-                            num_layers = args.sequence_mlp_num_layers,
-                            output_size = args.sequence_mlp_output_size,
-                            dropout = args.sequence_mlp_dropout,
+                            first_linear_dim = args.gvp_node_hidden_dims[0] * args.gvp_num_layers,
+                            hidden_size = args.protein_mlp_hidden_size,
+                            num_layers = args.protein_mlp_num_layers,
+                            output_size = args.protein_mlp_output_size,
+                            dropout = args.protein_mlp_dropout,
                             activation = args.activation)
     
-    def create_attentive_sequence_model(self, args: TrainArgs) -> None:
+    def create_graph_sequence_model(self, args: TrainArgs) -> None:
         """
         Creates the sequence model with attention
 
         :param args: A :class:`~chemprop.args.TrainArgs` object containing model arguments.
         """
-        from torch import nn
-        class Identity(nn.Module):
-            def __init__(self):
-                super(Identity, self).__init__()
+        self.protein_ds = lambda data_list: ProteinGraphDataset(data_list, 
+                                                            include_esm_feats = args.use_esm_feats_gvp,
+                                                            device=self.device)
 
-            def forward(self, x, ):
-                return x
-        import esm
-        import esm.inverse_folding as esm_if
-        self.esm_model, self.esm_alphabet = esm.pretrained.esm_if1_gvp4_t16_142M_UR50()
-        self.batch_converter = esm_if.util.CoordBatchConverter(self.esm_alphabet, 2048)
-        # from esm.model.esm2 import ESM2
-        # self.esm_model, alphabet = esm.pretrained.esm2_t6_8M_UR50D()
-        # self.esm_model = ESM2(6, 120, 6, alphabet)
-        self.esm_model = self.esm_model.to(self.device)#ESM2(6, 1280, 20, alphabet)
-        self.esm_model.encoder.layers = nn.ModuleList([])
-        self.esm_model.encoder.layer_norm = None
-        dim = self.esm_model.encoder.embed_tokens.embedding_dim
-        attn_layer = AttentivePooling(dim, dim)
-        self.sequence_attention = attn_layer
-        #         self.protein_self_attns = nn.ModuleList([])
-
-#         for _ in range(1):
-#             attn = SelfAttentionBlock(
-#                 dim = 1280,
-#                 dropout = 0.0
-#              )
-#             self.protein_self_attns.append(attn)
+        if not self.args.skip_gvp:
+            self.gvp_model = GVPEmbedderModel(node_h_dim = args.gvp_node_hidden_dims,
+                                             edge_h_dim = args.gvp_edge_hidden_dims,
+                                             seq_embed_dim = args.gvp_seq_embed_dim,
+                                             num_layers = args.gvp_num_layers,
+                                             include_esm_feats = args.use_esm_feats_gvp)
+        
+        # attn_layer = AttentivePooling(dim, dim)
+        # self.sequence_attention = attn_layer
         
     def create_encoder(self, args: TrainArgs) -> None:
         """
@@ -325,10 +233,8 @@ class MoleculeModel(nn.Module):
             )
         else:
             first_linear_dim_now = atom_first_linear_dim
-            if args.include_embed_features:
-                first_linear_dim_now += args.embed_mlp_output_size
-            if args.include_sequence_features:
-                first_linear_dim_now += args.sequence_mlp_output_size
+            if not args.protein_records_path is None:
+                first_linear_dim_now += args.gvp_node_hidden_dims[0] * args.gvp_num_layers
             self.readout = build_ffn(
                 first_linear_dim=first_linear_dim_now,
                 hidden_size=args.ffn_hidden_size + args.atom_descriptors_size,
@@ -485,20 +391,17 @@ class MoleculeModel(nn.Module):
                 bond_features_batch,
             )
 
-            if self.args.include_sequence_features:
-                sequence_feature_arr = batch[-1].sequence_feature_list
-                sequence_token_arr = batch[-1].sequence_token_list
-                coord_list = batch[-1].coord_list
-                coord_batch = [(c,None,None) for c in coord_list]
-                coords, confidence, strs, tokens, padding_mask = self.batch_converter(coord_batch,
-                                                                                      device=self.device)
-                
-                esm_if_out = self.esm_model.encoder.forward(coords, padding_mask, confidence, 
-                                                            return_all_hiddens=False)
+            if not self.args.protein_records_path is None:
+                protein_records = batch[-1].protein_record_list
+                protein_ds = self.protein_ds(protein_records)
+                protein_dataloader = torch_geometric.data.DataLoader(protein_ds,
+                                                                     batch_size=self.args.batch_size)
+                for protein_batch in protein_dataloader:
+                    protein_batch = protein_batch.to(self.device)
+                    break
+
+                protein_outs = self.gvp_model(protein_batch)
                 # ipdb.set_trace()
-                esm_if_out = esm_if_out['encoder_out'][0][1:-1,]
-                esm_if_out = esm_if_out.reshape((esm_if_out.shape[1], esm_if_out.shape[0], esm_if_out.shape[-1]))
-                
                 # sequence_feature_arr = pad_sequence(sequence_feature_arr,batch_first=True).to(self.device)
                 # sequence_token_arr = pad_sequence(sequence_token_arr,
                 #                                   padding_value=1,batch_first=True).to(self.device)
@@ -507,10 +410,10 @@ class MoleculeModel(nn.Module):
                 
                 # sequence_output = self.esm_model(sequence_token_arr,repr_layers=[len(self.esm_model.layers)])['representations'][len(self.esm_model.layers)][:, 1: len(sequence_feature_arr[0]) + 1, :]
                 # sequence_output, sequence_weights = self.sequence_attention(torch.cat([sequence_feature_arr,sequence_output],dim=-1))
-                sequence_output, sequence_weights = self.sequence_attention(esm_if_out)
+                # sequence_output, sequence_weights = self.sequence_attention(esm_if_out)
                 
-                sequence_output = self.sequence_model(sequence_output)
-                encodings = torch.concat([encodings,sequence_output],dim=-1)
+                # sequence_output = self.sequence_model(protein_outs)
+                encodings = torch.concat([encodings,protein_outs],dim=-1)
             
             #print(self.readout)
             #print(encodings.shape)
