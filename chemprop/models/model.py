@@ -234,7 +234,11 @@ class MoleculeModel(nn.Module):
         else:
             first_linear_dim_now = atom_first_linear_dim
             if not args.protein_records_path is None:
-                first_linear_dim_now += args.gvp_node_hidden_dims[0] * args.gvp_num_layers
+                if not self.args.skip_gvp:
+                    first_linear_dim_now += args.gvp_node_hidden_dims[0] * args.gvp_num_layers
+                else:
+                    first_linear_dim_now += args.esm_feat_size
+                    
             self.readout = build_ffn(
                 first_linear_dim=first_linear_dim_now,
                 hidden_size=args.ffn_hidden_size + args.atom_descriptors_size,
@@ -393,15 +397,20 @@ class MoleculeModel(nn.Module):
 
             if not self.args.protein_records_path is None:
                 protein_records = batch[-1].protein_record_list
-                protein_ds = self.protein_ds(protein_records)
-                protein_dataloader = torch_geometric.data.DataLoader(protein_ds,
-                                                                     batch_size=self.args.batch_size)
-                for protein_batch in protein_dataloader:
-                    protein_batch = protein_batch.to(self.device)
-                    break
-
-                protein_outs = self.gvp_model(protein_batch)
-                # ipdb.set_trace()
+                if not self.args.skip_gvp:
+                    protein_ds = self.protein_ds(protein_records)
+                    protein_dataloader = torch_geometric.data.DataLoader(protein_ds,
+                                                                         batch_size=self.args.batch_size)
+                    for protein_batch in protein_dataloader:
+                        protein_batch = protein_batch.to(self.device)
+                        break
+                    protein_outs = self.gvp_model(protein_batch)
+                
+                else:
+                    sequence_feature_arr = [each['esm2_feats'] for each in protein_records]
+                    sequence_feature_arr = pad_sequence(sequence_feature_arr,batch_first=True).to(self.device)
+                    protein_outs = sequence_feature_arr.mean(dim=1)
+                    
                 # sequence_feature_arr = pad_sequence(sequence_feature_arr,batch_first=True).to(self.device)
                 # sequence_token_arr = pad_sequence(sequence_token_arr,
                 #                                   padding_value=1,batch_first=True).to(self.device)
