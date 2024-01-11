@@ -793,9 +793,7 @@ def update_prediction_args(
         }
                 
         default_train_args = TrainArgs().parse_args(
-            ["--data_path", None, "--dataset_type", str(train_args.dataset_type), 
-             "--vocabulary_path", str(train_args.vocabulary_path),
-             "--sequence_features_path",str(train_args.sequence_features_path)]
+            ["--data_path", None, "--dataset_type", str(train_args.dataset_type)]
         )
         
         # print(default_train_args)

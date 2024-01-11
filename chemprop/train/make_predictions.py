@@ -60,17 +60,17 @@ def load_data(args: PredictArgs, smiles: List[List[str]]):
     if smiles is not None:
         full_data = get_data_from_smiles(
             smiles=smiles,
-            skip_invalid_smiles=False,
+            skip_invalid_smiles=True,
             features_generator=args.features_generator,
         )
     else:
         full_data = get_data(
-            vocabulary_path=args.vocabulary_path,
+            protein_records_path=args.protein_records_path,
             path=args.test_path,
             smiles_columns=args.smiles_columns,
             target_columns=[],
             ignore_columns=[],
-            skip_invalid_smiles=False,
+            skip_invalid_smiles=True,
             args=args,
             store_row=not args.drop_extra_columns,
         )
@@ -189,7 +189,7 @@ def predict_and_save(
     if args.evaluation_methods is not None:
 
         evaluation_data = get_data(
-            vocabulary_path = args.vocabulary_path,
+            protein_records_path = args.protein_records_path,
             path=args.test_path,
             smiles_columns=args.smiles_columns,
             target_columns=task_names,
@@ -413,7 +413,7 @@ def make_predictions(
     if calibrator is None and args.calibration_path is not None:
 
         calibration_data = get_data(
-            vocabulary_path=args.vocabulary_path,
+            protein_records_path=args.protein_records_path,
             path=args.calibration_path,
             smiles_columns=args.smiles_columns,
             target_columns=task_names,
