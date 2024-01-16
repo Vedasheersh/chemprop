@@ -1,4 +1,5 @@
 from typing import List, Union, Tuple
+from rotary_embedding_torch import RotaryEmbedding
 
 import numpy as np
 from rdkit import Chem
@@ -154,8 +155,19 @@ class MoleculeModel(nn.Module):
                                              seq_embed_dim = args.gvp_seq_embed_dim,
                                              num_layers = args.gvp_num_layers,
                                              include_esm_feats = args.use_esm_feats_gvp)
-        
-        # attn_layer = AttentivePooling(dim, dim)
+        else:
+            self.seq_embed_model = nn.Embedding(20, args.gvp_seq_embed_dim)
+            self.multihead_attn = nn.MultiheadAttention(args.gvp_seq_embed_dim, 6)
+            self.rotary_embed = RotaryEmbedding(dim=32)
+            self.seq_attn_model = AttentivePooling(1280 + args.gvp_seq_embed_dim, 1280 + args.gvp_seq_embed_dim)
+            self.sequence_model = build_ffn(
+                            first_linear_dim = 1280 + args.gvp_seq_embed_dim,
+                            hidden_size = args.protein_mlp_hidden_size,
+                            num_layers = args.protein_mlp_num_layers,
+                            output_size = args.protein_mlp_output_size,
+                            dropout = args.protein_mlp_dropout,
+                            activation = args.activation)
+            
         # self.sequence_attention = attn_layer
         
     def create_encoder(self, args: TrainArgs) -> None:
@@ -237,7 +249,7 @@ class MoleculeModel(nn.Module):
                 if not self.args.skip_gvp:
                     first_linear_dim_now += args.gvp_node_hidden_dims[0] * args.gvp_num_layers
                 else:
-                    first_linear_dim_now += args.esm_feat_size
+                    first_linear_dim_now += args.protein_mlp_output_size
                     
             self.readout = build_ffn(
                 first_linear_dim=first_linear_dim_now,
@@ -375,6 +387,15 @@ class MoleculeModel(nn.Module):
         :param bond_types_batch: A list of PyTorch tensors storing bond types of each bond determined by RDKit molecules.
         :return: The output of the :class:`MoleculeModel`, containing a list of property predictions.
         """
+        def seq_to_tensor(seq):
+            letter_to_num = {'C': 4, 'D': 3, 'S': 15, 'Q': 5, 'K': 11, 'I': 9,
+                       'P': 14, 'T': 16, 'F': 13, 'A': 0, 'G': 7, 'H': 8,
+                       'E': 6, 'L': 10, 'R': 1, 'W': 17, 'V': 19, 
+                       'N': 2, 'Y': 18, 'M': 12}
+            seq = torch.as_tensor([letter_to_num[a] for a in seq],
+                                  device=self.device, dtype=torch.long)
+            return seq
+        
         if self.is_atom_bond_targets:
             encodings = self.encoder(
                 batch,
@@ -407,9 +428,29 @@ class MoleculeModel(nn.Module):
                     protein_outs = self.gvp_model(protein_batch)
                 
                 else:
+                    # ipdb.set_trace()
+                    
+                    seq_arr = [seq_to_tensor(each['seq']) for each in protein_records]
+                    seq_arr = pad_sequence(seq_arr,batch_first=True).to(self.device)
+                    seq_outs = self.seq_embed_model(seq_arr)
+                    
                     sequence_feature_arr = [each['esm2_feats'] for each in protein_records]
                     sequence_feature_arr = pad_sequence(sequence_feature_arr,batch_first=True).to(self.device)
-                    protein_outs = sequence_feature_arr.mean(dim=1)
+                    if seq_arr.shape[1]!=sequence_feature_arr.shape[1]: 
+                        seq_outs = seq_outs[:,:sequence_feature_arr.shape[1]:]
+                    
+                    q = self.rotary_embed.rotate_queries_or_keys(seq_outs,
+                                                                 seq_dim=1)
+                    k = self.rotary_embed.rotate_queries_or_keys(seq_outs,
+                                                                seq_dim=1)
+                    # ipdb.set_trace()
+                    
+                    seq_outs, _ = self.multihead_attn(q, k, seq_outs)
+                    # print(seq_outs.shape, sequence_feature_arr.shape)
+                    
+                    protein_feature_arr = torch.cat([seq_outs, sequence_feature_arr], dim=-1)
+                    protein_outs, protein_wts = self.seq_attn_model(protein_feature_arr)
+                    protein_outs = self.sequence_model(protein_outs)
                     
                 # sequence_feature_arr = pad_sequence(sequence_feature_arr,batch_first=True).to(self.device)
                 # sequence_token_arr = pad_sequence(sequence_token_arr,
