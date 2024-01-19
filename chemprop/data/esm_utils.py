@@ -45,7 +45,7 @@ def calc_protein_representations_with_subunits(proteins, get_repr_fn, *, device)
             if 'out of memory' in str(e):
                 print('| WARNING: ran out of memory, retrying batch')
                 torch.cuda.empty_cache()
-                ipdb.set_trace()
+                # ipdb.set_trace()
                 subunits_representations = list(map(get_repr_fn, subunits))
             else:
                 raise e

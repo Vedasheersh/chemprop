@@ -1,5 +1,6 @@
 from typing import List, Union, Tuple
 from rotary_embedding_torch import RotaryEmbedding
+import transformers
 
 import numpy as np
 from rdkit import Chem
@@ -11,6 +12,8 @@ from .mpn import MPN
 from .ffn import build_ffn, MultiReadout
 from chemprop.data import ProteinGraphDataset
 from .gvp_models import GVPEmbedderModel
+from .transformer_models import TransformerEncoder
+from .en_transformer.en_transformer import EnTransformer
 from chemprop.args import TrainArgs
 from chemprop.features import BatchMolGraph
 from chemprop.nn_utils import initialize_weights
@@ -145,19 +148,66 @@ class MoleculeModel(nn.Module):
 
         :param args: A :class:`~chemprop.args.TrainArgs` object containing model arguments.
         """
-        self.protein_ds = lambda data_list: ProteinGraphDataset(data_list, 
+        if not args.use_entransformer:
+            self.protein_ds = lambda data_list: ProteinGraphDataset(data_list, 
                                                             include_esm_feats = args.use_esm_feats_gvp,
                                                             device=self.device)
+        else:
+            self.protein_ds = lambda data_list: ProteinGraphDataset(data_list,
+                                                            include_esm_feats = args.use_esm_feats_en_transformer,
+                                                            device = self.device)
 
         if not self.args.skip_gvp:
             self.gvp_model = GVPEmbedderModel(node_h_dim = args.gvp_node_hidden_dims,
                                              edge_h_dim = args.gvp_edge_hidden_dims,
                                              seq_embed_dim = args.gvp_seq_embed_dim,
                                              num_layers = args.gvp_num_layers,
-                                             include_esm_feats = args.use_esm_feats_gvp)
+                                             include_esm_feats = args.use_esm_feats_gvp,
+                                             residual = False)
+            self.attention_pooler = AttentivePooling(1280, 1280).to(self.device)
+            # self.sequence_ffn = build_ffn(first_linear_dim = 1280 + args.gvp_node_hidden_dims[0],
+            #                 hidden_size = args.protein_mlp_hidden_size,
+            #                 num_layers = args.protein_mlp_num_layers,
+            #                 output_size = args.protein_mlp_output_size,
+            #                 dropout = args.protein_mlp_dropout,
+            #                 activation = args.activation)
+            
+        elif args.use_entransformer:
+            en_transformer_dim = 256 if not args.use_esm_feats_en_transformer else 1280 + 256
+            self.en_transformer = EnTransformer(dim = en_transformer_dim, 
+                                                depth = 4, 
+                                                rel_pos_emb = True,
+                                                dim_head = 64, 
+                                                heads = 8, 
+                                                neighbors = 30).to(self.device)
+            self.seq_embed_model = nn.Embedding(21, en_transformer_dim, padding_idx=20).to(self.device)
+            self.attention_pooler = AttentivePooling(en_transformer_dim, en_transformer_dim).to(self.device)
+            self.sequence_ffn = build_ffn(first_linear_dim = en_transformer_dim,
+                            hidden_size = args.protein_mlp_hidden_size,
+                            num_layers = args.protein_mlp_num_layers,
+                            output_size = args.protein_mlp_output_size,
+                            dropout = args.protein_mlp_dropout,
+                            activation = args.activation)
+            
+        elif args.use_transformer:
+            self.transformer = TransformerEncoder(vocab_size = 21, 
+                                                  qty_encoder_layer = 3,
+                                                  qty_attention_head = 8,
+                                                  dim_vocab_embedding = 256,
+                                                  dim_model = 256,
+                                                  dim_inner_hidden = 256,
+                                                  embedding = True).to(self.device)
+            self.attention_pooler = AttentivePooling(1280 + 256, 1280 + 256).to(self.device)
+            self.sequence_ffn = build_ffn(first_linear_dim = 1280 + 256,
+                            hidden_size = args.protein_mlp_hidden_size,
+                            num_layers = args.protein_mlp_num_layers,
+                            output_size = args.protein_mlp_output_size,
+                            dropout = args.protein_mlp_dropout,
+                            activation = args.activation)
+            
         else:
-            self.seq_embed_model = nn.Embedding(20, args.gvp_seq_embed_dim)
-            self.multihead_attn = nn.MultiheadAttention(args.gvp_seq_embed_dim, 6)
+            self.seq_embed_model = nn.Embedding(21, args.gvp_seq_embed_dim, padding_idx=20)
+            self.multihead_attn = nn.MultiheadAttention(args.gvp_seq_embed_dim, 6, batch_first=True)
             self.rotary_embed = RotaryEmbedding(dim=32)
             self.seq_attn_model = AttentivePooling(1280 + args.gvp_seq_embed_dim, 1280 + args.gvp_seq_embed_dim)
             self.sequence_model = build_ffn(
@@ -247,7 +297,9 @@ class MoleculeModel(nn.Module):
             first_linear_dim_now = atom_first_linear_dim
             if not args.protein_records_path is None:
                 if not self.args.skip_gvp:
-                    first_linear_dim_now += args.gvp_node_hidden_dims[0] * args.gvp_num_layers
+                    first_linear_dim_now += args.gvp_node_hidden_dims[0] + 1280
+                elif self.args.use_entransformer:
+                    first_linear_dim_now +=  args.protein_mlp_output_size#256*3 + 1280
                 else:
                     first_linear_dim_now += args.protein_mlp_output_size
                     
@@ -425,16 +477,69 @@ class MoleculeModel(nn.Module):
                     for protein_batch in protein_dataloader:
                         protein_batch = protein_batch.to(self.device)
                         break
-                    protein_outs = self.gvp_model(protein_batch)
+                        
+                    gvp_outs = self.gvp_model(protein_batch)
+                    sequence_feature_arr = [each['esm2_feats'] for each in protein_records]
+                    sequence_feature_arr = pad_sequence(sequence_feature_arr,batch_first=True).to(self.device)
+                    seq_feats, seq_feat_wts = self.attention_pooler(sequence_feature_arr)
+                    protein_outs = torch.cat([gvp_outs, seq_feats], dim=-1)
+                    print(protein_outs.shape)
+                    # protein_outs = self.sequence_ffn(protein_outs)
+
+                elif self.args.use_entransformer:
+                    #ipdb.set_trace()
+                    seq_arr = [seq_to_tensor(each['seq']) for each in protein_records]
+                    seq_arr = pad_sequence(seq_arr,batch_first=True,
+                                           padding_value=20).to(self.device)
+                    coord_arr = [torch.as_tensor(each['coords'], 
+                                                 device='cuda', 
+                                                 dtype=torch.float32) for each in protein_records]
+                    
+                    coords = pad_sequence(coord_arr,batch_first=True,
+                                           padding_value=np.inf).to(self.device)[:,:,1,:]
+                    mask = torch.isfinite(coords.sum(dim=(-1)))
+                    coords[~mask] = np.inf
+                    sequence_feature_arr = [each['esm2_feats'] for each in protein_records]
+                    sequence_feature_arr = pad_sequence(sequence_feature_arr,
+                                                        batch_first=True).to(self.device)
+                    if seq_arr.shape[1]!=sequence_feature_arr.shape[1]: 
+                        seq_arr = seq_arr[:,:sequence_feature_arr.shape[1]:]
+                        coords = coords[:,:sequence_feature_arr.shape[0],:]
+                        
+                    seq_outs = self.seq_embed_model(seq_arr)
+                    if self.args.use_esm_feats_en_transformer:
+                        protein_feature_arr = torch.cat([seq_outs, sequence_feature_arr], dim=-1)
+                    else:
+                        protein_feature_arr = seq_outs
+                    protein_feature_arr, coords = self.en_transformer(protein_feature_arr, coords, mask=mask)
+                    protein_outs, protein_wts = self.attention_pooler(protein_feature_arr)
+                    protein_outs = self.sequence_ffn(protein_outs)
+                    # ipdb.set_trace()
+                
+                elif self.args.use_transformer:
+                    seq_arr = [seq_to_tensor(each['seq']) for each in protein_records]
+                    seq_arr = pad_sequence(seq_arr,batch_first=True,
+                                           padding_value=20).to(self.device)
+                    sequence_feature_arr = [each['esm2_feats'] for each in protein_records]
+                    sequence_feature_arr = pad_sequence(sequence_feature_arr,batch_first=True).to(self.device)
+                    if seq_arr.shape[1]!=sequence_feature_arr.shape[1]: 
+                        seq_arr = seq_arr[:,:sequence_feature_arr.shape[1]:]
+                    seq_outs = self.transformer(seq_arr)
+                    # ipdb.set_trace()
+                    protein_feature_arr = torch.cat([seq_outs, sequence_feature_arr], dim=-1)
+                    protein_outs, protein_wts = self.attention_pooler(protein_feature_arr)
+                    protein_outs = self.sequence_ffn(protein_outs)
                 
                 else:
                     # ipdb.set_trace()
-                    
                     seq_arr = [seq_to_tensor(each['seq']) for each in protein_records]
-                    seq_arr = pad_sequence(seq_arr,batch_first=True).to(self.device)
+                    seq_arr = pad_sequence(seq_arr,batch_first=True,
+                                           padding_value=20).to(self.device)
                     seq_outs = self.seq_embed_model(seq_arr)
-                    
+
                     sequence_feature_arr = [each['esm2_feats'] for each in protein_records]
+                    # ipdb.set_trace()
+                    print(sequence_feature_arr[0].shape)
                     sequence_feature_arr = pad_sequence(sequence_feature_arr,batch_first=True).to(self.device)
                     if seq_arr.shape[1]!=sequence_feature_arr.shape[1]: 
                         seq_outs = seq_outs[:,:sequence_feature_arr.shape[1]:]
@@ -539,4 +644,3 @@ class MoleculeModel(nn.Module):
                 output = nn.functional.softplus(output) + 1
 
         return output
-

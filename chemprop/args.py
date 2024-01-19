@@ -371,6 +371,12 @@ class TrainArgs(CommonArgs):
     """Use only the additional features in an FFN, no graph network."""
     protein_records_path: str = None
     """ Path to protein records json file """
+    use_entransformer: bool = False
+    """ Use en transformer or not """
+    use_esm_feats_en_transformer: bool = False
+    """ Use esm feats in en transformer or not """
+    use_transformer: bool = False
+    """ Whether to use transformer """
     skip_gvp: bool = False
     """ Skip GVP or not """
     gvp_num_layers: int = 3

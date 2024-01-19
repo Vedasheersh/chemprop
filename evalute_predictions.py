@@ -6,9 +6,9 @@ import numpy as np
 import plotly.graph_objects as go
 import plotly.io as pio
 
-PARAMETER = 'km'
-PREDS_DIR = f'/home/ubuntu/experiments/{PARAMETER}/gvp_seq_random_evi_ens5_test/'
-DATA_DIR = '/home/ubuntu/CatPred-DB/data/processed/splits_wpdbs/'
+PARAMETER = 'kcat'
+PREDS_DIR = f'/home/ubuntu/mychemprop/experiments/{PARAMETER}/test_seq_random_evi_ens5_wembed_wesm_wattn_rotary/'
+DATA_DIR = '/home/ubuntu/mychemprop/CatPred-DB/data/processed/splits_wpdbs/'
 
 PREDFILE_PREFIX = 'test_preds_unc_evi_mvewt_' #seq80.csv
 DATAFILE_PREFIX = f'{PARAMETER}-random_test_sequence_' #80cluster.csv

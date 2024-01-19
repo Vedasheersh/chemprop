@@ -433,7 +433,8 @@ class GVPEmbedderModel(nn.Module):
         else:
             node_in_dim = (node_in_dim[0] + seq_embed_dim, node_in_dim[1])
         
-        self.W_s = nn.Embedding(20, seq_embed_dim)
+        if seq_embed_dim>0: self.W_s = nn.Embedding(20, seq_embed_dim)
+        else: self.W_s = None
 
         self.W_v = nn.Sequential(
             LayerNorm(node_in_dim),
@@ -488,7 +489,12 @@ class GVPEmbedderModel(nn.Module):
         Returns:
             logits
         """
-        seq = self.W_s(batch.seq)
+        # ipdb.set_trace()
+        if not self.W_s is None:
+            seq = self.W_s(batch.seq)
+        else:
+            seq = batch.seq_feats
+            
         h_V = (batch.node_s, batch.node_v)
         h_V = (torch.cat([h_V[0], seq], dim=-1), h_V[1])
         
@@ -518,4 +524,5 @@ class GVPEmbedderModel(nn.Module):
 
         out = scatter_mean(out, batch.batch, dim=0)
         
-        return self.dense(out)
+        return out#self.dense(out)
+
