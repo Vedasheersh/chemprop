@@ -2,7 +2,7 @@
 https://github.com/Graylab/MaskedProteinEnT/blob/main/src/model/en_transformer/en_transformer.py
 '''
 
-
+import ipdb
 import torch
 import torch.nn.functional as F
 from torch import nn, einsum
@@ -278,6 +278,8 @@ class EquivariantAttention(nn.Module):
                 nbhd_ranking = nbhd_ranking.masked_fill(~ranking_mask, 1e5)
 
             nbhd_values, nbhd_indices = nbhd_ranking.topk(num_nn, dim = -1, largest = False)
+            # except:#RuntimeError:
+            #     ipdb.set_trace()
             nbhd_masks = nbhd_values <= valid_neighbor_radius
 
         # derive queries keys and values

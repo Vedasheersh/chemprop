@@ -15,6 +15,31 @@ def _normalize(tensor, dim=-1):
     return torch.nan_to_num(
         torch.div(tensor, torch.norm(tensor, dim=dim, keepdim=True)))
 
+def calc_dihedral_feats(X, eps=1e-7):
+    # From https://github.com/jingraham/neurips19-graph-protein-design
+    
+    X = torch.reshape(X[:, :3], [3*X.shape[0], 3])
+    dX = X[1:] - X[:-1]
+    U = _normalize(dX, dim=-1)
+    u_2 = U[:-2]
+    u_1 = U[1:-1]
+    u_0 = U[2:]
+
+    # Backbone normals
+    n_2 = _normalize(torch.cross(u_2, u_1), dim=-1)
+    n_1 = _normalize(torch.cross(u_1, u_0), dim=-1)
+
+    # Angle between normals
+    cosD = torch.sum(n_2 * n_1, -1)
+    cosD = torch.clamp(cosD, -1 + eps, 1 - eps)
+    D = torch.sign(torch.sum(u_2 * n_1, -1)) * torch.acos(cosD)
+
+    # This scheme will remove phi[0], psi[-1], omega[-1]
+    D = F.pad(D, [1, 2]) 
+    D = torch.reshape(D, [-1, 3])
+    # Lift angle representations to the circle
+    D_features = torch.cat([torch.cos(D), torch.sin(D)], 1)
+    return D_features
 
 def _rbf(D, D_min=0., D_max=20., D_count=16, device='cpu'):
     '''

@@ -377,6 +377,8 @@ class TrainArgs(CommonArgs):
     """ Use esm feats in en transformer or not """
     use_transformer: bool = False
     """ Whether to use transformer """
+    use_resnet: bool = False
+    """ Whether to use resnet """
     skip_gvp: bool = False
     """ Skip GVP or not """
     gvp_num_layers: int = 3
@@ -385,10 +387,14 @@ class TrainArgs(CommonArgs):
     """ GVP hidden dims for nodes """
     gvp_edge_hidden_dims: List[int] = [100, 30]
     """ GVP hidden dims for edges """
-    gvp_seq_embed_dim: int = 100
-    """ GVP sequence embed dim"""
+    seq_embed_dim: int = 300
+    """ sequence embed dim"""
+    seq_self_attn_nheads: int = 6
+    """ seq_self_attn_nheads """
     use_esm_feats_gvp: bool = False
     """ Whether to append esm features in GVP """
+    add_esm_feats: bool = False
+    """ Whether to add esm features """
     esm_feat_size: int = 1280
     """ sequence feature size to input sequence model."""
     protein_mlp_hidden_size: int = 600
