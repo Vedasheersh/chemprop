@@ -176,6 +176,9 @@ class MoleculeModel(nn.Module):
 
         seq_attn_pooling_dim = args.seq_embed_dim
         # For final attentive pooling
+        if args.add_esm_feats:
+            seq_attn_pooling_dim+=1280
+            
         self.attentive_pooler = AttentivePooling(seq_attn_pooling_dim, seq_attn_pooling_dim)
         self.max_pooler = lambda x: torch.max(x, dim=1, 
                                               keepdim=False, out=None)
