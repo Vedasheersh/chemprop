@@ -509,7 +509,7 @@ class MoleculeModel(nn.Module):
                 bond_features_batch,
             )
 
-            if not self.args.protein_records_path is None:
+            if not self.args.skip_protein and not self.args.protein_records_path is None:
                 protein_records = batch[-1].protein_record_list
                 
                 seq_arr = [seq_to_tensor(each['seq']) for each in protein_records]
