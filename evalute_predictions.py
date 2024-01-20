@@ -6,15 +6,16 @@ import numpy as np
 import plotly.graph_objects as go
 import plotly.io as pio
 
-PARAMETER = 'kcat'
-PREDS_DIR = f'/home/ubuntu/mychemprop/experiments/{PARAMETER}/test_seq_random_evi_ens5_wembed_wesm_wattn_rotary/'
-DATA_DIR = '/home/ubuntu/mychemprop/CatPred-DB/data/processed/splits_wpdbs/'
+dir_prefix = sys.argv[2]
+PARAMETER = sys.argv[1]
+PREDS_DIR = f'../experiments/{PARAMETER}/test_{dir_prefix}'
+DATA_DIR = '../CatPred-DB/data/processed/splits_wpdbs/'
 
 PREDFILE_PREFIX = 'test_preds_unc_evi_mvewt_' #seq80.csv
 DATAFILE_PREFIX = f'{PARAMETER}-random_test_sequence_' #80cluster.csv
 
 TARGETCOL = f'log10{PARAMETER}_max' if PARAMETER=='kcat' else f'log10{PARAMETER}_mean'
-STDEVCOL = f'{TARGETCOL}_evidential_total_mve_weighting_stdev'
+STDEVCOL = f'{TARGETCOL}_evidential_total_uncal_var'#f'{TARGETCOL}_evidential_total_mve_weighting_stdev' 
 
 SMILESCOL = 'reactant_smiles' if PARAMETER=='kcat' else 'substrate_smiles'
 
