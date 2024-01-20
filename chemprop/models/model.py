@@ -339,7 +339,7 @@ class MoleculeModel(nn.Module):
             )
         else:
             first_linear_dim_now = atom_first_linear_dim
-            if not args.protein_records_path is None:
+            if not args.skip_protein and not args.protein_records_path is None:
                 first_linear_dim_now += args.seq_embed_dim
                 if args.add_esm_feats:
                     first_linear_dim_now += 1280
