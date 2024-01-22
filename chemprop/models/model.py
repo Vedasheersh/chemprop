@@ -167,7 +167,7 @@ class MoleculeModel(nn.Module):
             self.resnet = ResNet(resnet_config).to(self.device)
             
         # For rotary positional embeddings
-        self.rotary_embedder = RotaryEmbedding(dim=32)
+        self.rotary_embedder = RotaryEmbedding(dim=args.seq_embed_dim//4)
         
         # For self-attention
         self.multihead_attn = nn.MultiheadAttention(args.seq_embed_dim, 
@@ -553,7 +553,10 @@ class MoleculeModel(nn.Module):
                         seq_outs = torch.cat([esm_feature_arr, seq_outs], dim=-1)
                         
                     # pool attentively
-                    seq_pooled_outs, seq_wts = self.attentive_pooler(seq_outs)
+                    if not self.args.skip_attentive_pooling:
+                        seq_pooled_outs, seq_wts = self.attentive_pooler(seq_outs)
+                    else:
+                        seq_pooled_outs = seq_outs.mean(dim=1)
                 
                 total_outs = torch.cat([seq_pooled_outs, encodings], dim=-1)
                 output = self.readout(total_outs)

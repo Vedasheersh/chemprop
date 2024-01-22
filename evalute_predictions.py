@@ -154,3 +154,159 @@ for R in RANGE:
     if R==0: _calc_metrics_unc(np.abs(target-pred),std, PARAMETER)
     # break
 
+import sys
+import os
+import pandas as pd
+from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error
+import numpy as np
+import plotly.graph_objects as go
+import plotly.io as pio
+
+dir_prefix = sys.argv[2]
+PARAMETER = sys.argv[1]
+PREDS_DIR = f'../experiments/{PARAMETER}/test_{dir_prefix}'
+DATA_DIR = '../CatPred-DB/data/processed/splits_wpdbs/'
+
+PREDFILE_PREFIX = 'test_preds_unc_evi_mvewt_' #seq80.csv
+DATAFILE_PREFIX = f'{PARAMETER}-random_test_sequence_' #80cluster.csv
+
+TARGETCOL = f'log10{PARAMETER}_max' if PARAMETER=='kcat' else f'log10{PARAMETER}_mean'
+STDEVCOL = f'{TARGETCOL}_evidential_total_uncal_var'#f'{TARGETCOL}_evidential_total_mve_weighting_stdev' 
+
+SMILESCOL = 'reactant_smiles' if PARAMETER=='kcat' else 'substrate_smiles'
+
+RANGE = [0,20,40,60,80,99]
+import ipdb
+
+def _error_calc(target, pred):
+    errors = np.abs(np.array(target)-np.array(pred))
+    bins = np.arange(0, max(errors) + 0.1, 0.1)
+    freqs,bin_edges = np.histogram(errors, bins)
+    percs = 100*freqs/len(errors)
+    cum_percs = np.cumsum(percs)
+    index_err1 = np.where(bin_edges==1.)[0][0]
+    cum_perc_err1 = cum_percs[index_err1]
+    bin_edges = bin_edges[1:]
+    return cum_perc_err1, bin_edges, cum_percs
+
+def _bin_by_std(target, pred, std, cutoff):
+    df = pd.DataFrame({'target':target, 'pred': pred, 'stdev': std})
+    return df[df.stdev<=cutoff]
+
+def _calc_metrics(target, pred, std):
+    std_bins = [0.25,0.5,0.75,1.0,1.25,1.5,1.75,2.0,10]
+    cum_perc_err1 = {}
+    for bin in std_bins:
+        df = _bin_by_std(target, pred, std, bin)
+        target_, pred_ = df.target, df.pred
+        cum_perc_err1[bin], bins, cums = _error_calc(target_, pred_)
+        
+    return {'r2': r2_score(target, pred),
+           'mae': mean_absolute_error(target,pred),
+           'mse': mean_squared_error(target,pred), 
+            'cum_perc_err1': cum_perc_err1}
+
+color1 = 'rgba(203, 101, 95, 0.8)'
+color2 = 'rgba(92, 143, 198, 0.8)'
+color3 = 'rgba(226, 192, 93, 0.8)'
+
+if PARAMETER=='kcat': color = color1
+elif PARAMETER=='km': color = color2
+else: color = color3
+
+def make_boxplot(percentile_stds, percentile_mae_avg, plot_outname, binwidth, color):
+    # Binning y values by x values with step ranges starting from 0 in intervals of 0.5
+    bins = np.arange(0, max(percentile_stds) + binwidth + binwidth/5, binwidth)  # Adjust range calculation
+    # print(bins)
+    digitized = np.digitize(percentile_stds, bins)
+    #print(digitized)
+    binned_data = {i: [] for i in range(1, len(bins))}  # Extend range to include the first box
+    
+    for i, val in enumerate(digitized):
+        binned_data[val].append(percentile_mae_avg[i])
+
+    #print(binned_data)
+    
+    # Create layout for aesthetics
+    layout = go.Layout(
+        xaxis=dict(
+            tickfont=dict(size=18, color='black', family='Arial'),  # Font settings for x-axis ticks
+            linecolor='black',  # Black-colored X-axis line
+            tickvals=list(range(len(bins) + 1)),  # Set custom tick values for the bins
+            ticktext=[f'{bins[i] if i < len(bins) else bins[i - 1] + binwidth:.1f}' for i in range(1, len(bins))],  # Format tick labels as intervals
+            # tickangle=-45,  # Rotate x-axis tick labels anticlockwise
+            tickwidth=1.25,  # Set tick width for x-axis
+            ticks='outside',  # Place x-axis ticks outside the plot area
+        ),
+        yaxis=dict(
+            tickfont=dict(size=18, color='black', family='Arial'),
+            linecolor='black',  # Black-colored Y-axis line
+            tickwidth=1.25,  # Set tick width for y-axis
+            ticks='outside',  # Place y-axis ticks outside the plot area
+        ),
+        plot_bgcolor='rgba(0,0,0,0)',  # Transparent background
+    )
+
+    # Create boxplot data using the binned data
+    boxplot_data = []
+
+    for key, values in binned_data.items():
+        if key < len(bins):  # Check to prevent index out of bounds
+            boxplot_data.append(go.Box(
+                y=values,
+                name=f'{bins[key] if key < len(bins) else bins[key - 1] + binwidth:.2f}',  # Define label for each box as interval
+                fillcolor=color,  # Set box fill color as transparent
+                line=dict(color='black', width=1.25),  # Set outline color of each box to black with a thicker width
+                boxpoints='outliers',  # Remove outlier points
+            ))
+
+    # Create the figure using the provided snippet and layout
+    fig = go.Figure(data=boxplot_data, layout=layout)
+
+    # Save the boxplot as SVG file
+    pio.write_image(fig, plot_outname)
+    
+def _calc_metrics_unc(errors, stds, param, binwidth=0.3):
+    percentiles = np.arange(1,99,0.1)
+    stds, errors = zip(*sorted(zip(stds, errors)))
+    bins = np.arange(0, max(stds) + binwidth, binwidth)  # Adjust range calculation
+    # print(bins)
+    digitized = np.digitize(stds, bins)
+    percentile_stds = []
+    for perc in percentiles:
+        percentile_stds.append(np.percentile(stds, perc))
+
+    percentile_mae_avg = []
+    percentile_mae_std = []
+
+    for perc in percentile_stds:
+        items = []
+        for err, std in zip(errors, stds):
+            if std<=perc: 
+                items.append(err)
+        percentile_mae_avg.append(np.average(items))
+        percentile_mae_std.append(np.std(items))
+        
+    make_boxplot(percentile_stds, percentile_mae_avg, f'{param}_unc_boxplot.svg', 0.2, color)
+
+for R in RANGE:
+    if R==0:
+        PREDFILE_PREFIX2 = PREDFILE_PREFIX[:-1]
+        DATAFILE_PREFIX2 = f'{PARAMETER}-random_test'
+        datafile = f'{DATA_DIR}/{DATAFILE_PREFIX2}.csv'
+        predsfile = f'{PREDS_DIR}/{PREDFILE_PREFIX2}.csv'
+    else:
+        datafile = f'{DATA_DIR}/{DATAFILE_PREFIX}{R}cluster.csv'
+        predsfile = f'{PREDS_DIR}/{PREDFILE_PREFIX}seq{R}.csv'
+        
+    data_df = pd.read_csv(datafile)
+    data_df.index = data_df[SMILESCOL] + data_df['sequence']
+    preds_df = pd.read_csv(predsfile)
+    preds_df.index = preds_df[SMILESCOL] + preds_df['sequence']
+    pred = preds_df[TARGETCOL]
+    target = [data_df.loc[ind][TARGETCOL] for ind in preds_df.index]
+    std = preds_df[STDEVCOL]
+    print(R, _calc_metrics(target,pred,std))
+    if R==0: _calc_metrics_unc(np.abs(target-pred),std, PARAMETER)
+    # break
+
