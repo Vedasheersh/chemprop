@@ -339,7 +339,7 @@ class MoleculeModel(nn.Module):
             )
         else:
             first_linear_dim_now = atom_first_linear_dim
-            if not args.protein_records_path is None:
+            if not args.skip_protein and not args.protein_records_path is None:
                 first_linear_dim_now += args.seq_embed_dim
                 if args.add_esm_feats:
                     first_linear_dim_now += 1280
@@ -509,7 +509,7 @@ class MoleculeModel(nn.Module):
                 bond_features_batch,
             )
 
-            if not self.args.protein_records_path is None:
+            if not self.args.skip_protein and not self.args.protein_records_path is None:
                 protein_records = batch[-1].protein_record_list
                 
                 seq_arr = [seq_to_tensor(each['seq']) for each in protein_records]
