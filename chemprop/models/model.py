@@ -20,7 +20,7 @@ from chemprop.args import TrainArgs
 from chemprop.features import BatchMolGraph
 from chemprop.nn_utils import initialize_weights
 from torch.nn.utils.rnn import pad_sequence
-# from egnn_pytorch import EGNN
+from egnn_pytorch import EGNN
 
 from collections import OrderedDict
 import ipdb
@@ -39,6 +39,48 @@ def exists(val):
 
 def default(val, d):
     return val if exists(val) else d
+    
+class EGNN_Net(nn.Module):
+    def __init__(self, dim, device, depth = 3, edge_dim = 0,
+                                m_dim = 16,
+                                fourier_features = 0,
+                                num_nearest_neighbors = 30,
+                                dropout = 0.0,
+                                init_eps = 1e-3,
+                                norm_feats = True,
+                                norm_coors = True,
+                                norm_coors_scale_init = 1e-2,
+                                update_feats = True,
+                                update_coors = True,
+                                only_sparse_neighbors = False,
+                                valid_radius = float('inf'),
+                                m_pool_method = 'sum',
+                                soft_edges = True,
+                                coor_weights_clamp_value = 2.):
+        super(EGNN_Net, self).__init__()
+        self.depth = depth
+        self.layers = [EGNN(dim, edge_dim,
+                                m_dim,
+                                fourier_features,
+                                num_nearest_neighbors,
+                                dropout,
+                                init_eps,
+                                norm_feats,
+                                norm_coors,
+                                norm_coors_scale_init,
+                                update_feats,
+                                update_coors,
+                                only_sparse_neighbors,
+                                valid_radius,
+                                m_pool_method,
+                                soft_edges,
+                                coor_weights_clamp_value).to(device) for _ in range(depth)]
+
+    def forward(self, feats, coords):
+        for layer in self.layers:
+            feats, coords = layer(feats, coords)
+            
+        return feats
     
 class AttentivePooling(nn.Module):
     def __init__(self, input_size=1280, hidden_size=1280):
@@ -165,6 +207,10 @@ class MoleculeModel(nn.Module):
         elif args.use_resnet:
             resnet_config = ProteinResNetConfig(hidden_size=args.seq_embed_dim)
             self.resnet = ResNet(resnet_config).to(self.device)
+            
+        elif self.args.use_egnn:
+            depth = 3
+            self.egnn_net = EGNN_Net(self.args.seq_embed_dim, self.device)
             
         # For rotary positional embeddings
         self.rotary_embedder = RotaryEmbedding(dim=args.seq_embed_dim//4)
@@ -539,7 +585,33 @@ class MoleculeModel(nn.Module):
                     if self.args.add_esm_feats:
                         seq_pooled_outs = torch.cat([esm_feature_arr.mean(dim=1), 
                                                      seq_pooled_outs], dim=-1)
-                        
+                
+                elif self.args.use_egnn:
+                    # print('egnn')
+                    coord_arr = [torch.as_tensor(each['coords'], 
+                                                 device='cuda', 
+                                                 dtype=torch.float32) for each in protein_records]
+                    
+                    coords = pad_sequence(coord_arr,batch_first=True,
+                                           padding_value=0).to(self.device)[:,:,1,:]
+                    mask = torch.isfinite(coords.sum(dim=(-1)))
+                    coords[~mask] = 0
+
+                    if seq_arr.shape[1]!=coords.shape[1]: 
+                        coords = coords[:,:seq_arr.shape[1],:]
+                        mask = mask[:,:seq_arr.shape[1]]
+                    # ipdb.set_trace()
+                    seq_outs = self.rotary_embedder.rotate_queries_or_keys(seq_outs,
+                                                                 seq_dim=1)
+                    seq_outs = self.egnn_net(seq_outs, coords)
+                    if self.args.add_esm_feats:
+                        seq_outs = torch.cat([esm_feature_arr, seq_outs], dim=-1)
+                    
+                    # pool attentively
+                    if not self.args.skip_attentive_pooling:
+                        seq_pooled_outs, seq_wts = self.attentive_pooler(seq_outs)
+                    else:
+                        seq_pooled_outs = seq_outs.mean(dim=1)
                 else:
                     # add rotary embeddings
                     q = self.rotary_embedder.rotate_queries_or_keys(seq_outs,
