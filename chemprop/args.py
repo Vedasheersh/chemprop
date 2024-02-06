@@ -6,6 +6,7 @@ from typing import List, Optional
 from typing_extensions import Literal
 from packaging import version
 from warnings import warn
+from egnn_pytorch import EGNN
 
 import torch
 from tap import Tap  # pip install typed-argument-parser (https://github.com/swansonk14/typed-argument-parser)
@@ -122,6 +123,8 @@ class CommonArgs(Tap):
     """
     Path to constraints applied to atomic/bond properties prediction.
     """
+    protein_records_path: str = None
+    """ Path to protein records json file """
 
     def __init__(self, *args, **kwargs):
         super(CommonArgs, self).__init__(*args, **kwargs)
@@ -248,6 +251,8 @@ class TrainArgs(CommonArgs):
     # General arguments
     data_path: str
     """Path to data CSV file."""
+    vocabulary_path: str = None
+    """ Path to EC and Taxonomy vocabulary file """
     smoke_test: bool = False
     """ If smoke test?"""
     sequence_max_length = 2048
@@ -373,6 +378,8 @@ class TrainArgs(CommonArgs):
     """ Path to protein records json file """
     use_entransformer: bool = False
     """ Use en transformer or not """
+    skip_protein: bool = False
+    """ To skip protein or noot""" 
     use_esm_feats_en_transformer: bool = False
     """ Use esm feats in en transformer or not """
     use_transformer: bool = False
@@ -381,6 +388,8 @@ class TrainArgs(CommonArgs):
     """ Whether to use resnet """
     skip_gvp: bool = False
     """ Skip GVP or not """
+    skip_attentive_pooling: bool = False
+    """ To skip attentive pooling or not """
     gvp_num_layers: int = 3
     """ NUm of gvp layers """
     gvp_node_hidden_dims: List[int] = [200, 100]
@@ -395,6 +404,22 @@ class TrainArgs(CommonArgs):
     """ Whether to append esm features in GVP """
     add_esm_feats: bool = False
     """ Whether to add esm features """
+    use_egnn: bool = False
+    """ Whether to use egnn """
+    include_embed_features: bool = False
+    """ Whether to use embed features"""
+    embed_dropout: bool = 0.0
+    """ Dropout for embeds"""
+    embed_mlp_dropout: bool = 0.0
+    """ Dropout for MLP in bembeds"""
+    embed_mlp_hidden_size: int = 100
+    """ Embed hidden size"""
+    embed_mlp_output_size: int = 100
+    """ Embed output size"""
+    embed_mlp_num_layers: int = 2
+    """ Embed MLP layers"""
+    embed_size_to_dim_power: float = 0.33
+    """param for embed dim"""
     esm_feat_size: int = 1280
     """ sequence feature size to input sequence model."""
     protein_mlp_hidden_size: int = 600
@@ -908,7 +933,8 @@ class TrainArgs(CommonArgs):
 
 class PredictArgs(CommonArgs):
     """:class:`PredictArgs` includes :class:`CommonArgs` along with additional arguments used for predicting with a Chemprop model."""
-
+    protein_records_path: str = None
+    """ Path to protein records json file """
     test_path: str
     """Path to CSV file containing testing data for which predictions will be made."""
     preds_path: str
@@ -956,7 +982,9 @@ class PredictArgs(CommonArgs):
     """Path to the extra atom descriptors."""
     calibration_bond_descriptors_path: str = None
     """Path to the extra bond descriptors that will be used as bond features to featurize a given molecule."""
-
+    def __init__(self):
+        super(PredictArgs, self).__init__()
+        
     @property
     def ensemble_size(self) -> int:
         """The number of models in the ensemble."""

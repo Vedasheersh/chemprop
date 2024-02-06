@@ -76,6 +76,7 @@ def cross_validate(args: TrainArgs,
     data = get_data(
         path=args.data_path,
         protein_records_path = args.protein_records_path,
+        vocabulary_path = args.vocabulary_path,
         args=args,
         logger=logger,
         skip_none_targets=True,

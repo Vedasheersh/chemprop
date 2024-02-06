@@ -10,9 +10,9 @@ import torch_geometric
 
 from .mpn import MPN
 from .ffn import build_ffn, MultiReadout
-from chemprop.data import ProteinGraphDataset
-from chemprop.data.gvp_utils import calc_dihedral_feats
-from .gvp_models import GVPEmbedderModel
+# from chemprop.data import ProteinGraphDataset
+# from chemprop.data.gvp_utils import calc_dihedral_feats
+# from .gvp_models import GVPEmbedderModel
 from .transformer_models import TransformerEncoder
 from .cnn_models import ProteinResNetConfig, ResNet
 from .en_transformer.en_transformer import EnTransformer
@@ -20,7 +20,7 @@ from chemprop.args import TrainArgs
 from chemprop.features import BatchMolGraph
 from chemprop.nn_utils import initialize_weights
 from torch.nn.utils.rnn import pad_sequence
-# from egnn_pytorch import EGNN
+from egnn_pytorch import EGNN
 
 from collections import OrderedDict
 import ipdb
@@ -39,6 +39,98 @@ def exists(val):
 
 def default(val, d):
     return val if exists(val) else d
+    
+    
+class EmbedderModel(nn.Module):
+    """A :class:`EmbedderModel` is a model which contains a series of embedding layers followed by an MLP layer."""
+
+    def __init__(self, args: TrainArgs):
+        """
+        :param args: A :class:`~chemprop.args.TrainArgs` object containing model arguments.
+        """
+        super(EmbedderModel, self).__init__()
+
+        self.embed_dim_fn = lambda x: int(np.power(x, args.embed_size_to_dim_power))+1
+        self.device = args.device
+
+        self.embed_layers = []
+        embed_dims = []
+        for size in args.embed_sizes:
+            dim = self.embed_dim_fn(size)
+            embed_dims.append(dim)
+            layer = nn.Embedding(size, dim).to(self.device)
+            # print(size,dim)
+            nn.init.kaiming_normal_(layer.weight, nonlinearity='leaky_relu')
+            self.embed_layers.append(layer)
+
+        self.embed_dropout = nn.Dropout(args.embed_dropout) if args.embed_dropout>0 else None
+
+        self.mlp_module = build_ffn(
+                first_linear_dim = sum(embed_dims),
+                hidden_size = args.embed_mlp_hidden_size,
+                num_layers = args.embed_mlp_num_layers,
+                output_size = args.embed_mlp_output_size,
+                dropout = args.embed_mlp_dropout,
+                activation = 'LeakyReLU'
+                )
+
+    def forward(self, categorical_data: torch.Tensor) -> torch.Tensor:
+
+        embeds = []
+        for i, embedding_layer in enumerate(self.embed_layers):
+            # print(i,categorical_data[:,i])
+            # print(embedding_layer)
+            embeds.append(embedding_layer(categorical_data[:,i]))
+        embeds = torch.cat(embeds, dim=1)
+
+        if self.embed_dropout is not None:
+            embeds = self.embed_dropout(embeds)
+
+        output = self.mlp_module(embeds)
+
+        return output
+    
+class EGNN_Net(nn.Module):
+    def __init__(self, dim, device, depth = 3, edge_dim = 0,
+                                m_dim = 16,
+                                fourier_features = 0,
+                                num_nearest_neighbors = 30,
+                                dropout = 0.0,
+                                init_eps = 1e-3,
+                                norm_feats = True,
+                                norm_coors = True,
+                                norm_coors_scale_init = 1e-2,
+                                update_feats = True,
+                                update_coors = False,
+                                only_sparse_neighbors = False,
+                                valid_radius = float('inf'),
+                                m_pool_method = 'sum',
+                                soft_edges = True,
+                                coor_weights_clamp_value = 2.):
+        super(EGNN_Net, self).__init__()
+        self.depth = depth
+        self.layers = [EGNN(dim, edge_dim,
+                                m_dim,
+                                fourier_features,
+                                num_nearest_neighbors,
+                                dropout,
+                                init_eps,
+                                norm_feats,
+                                norm_coors,
+                                norm_coors_scale_init,
+                                update_feats,
+                                update_coors,
+                                only_sparse_neighbors,
+                                valid_radius,
+                                m_pool_method,
+                                soft_edges,
+                                coor_weights_clamp_value).to(device) for _ in range(depth)]
+
+    def forward(self, feats, coords):
+        for layer in self.layers:
+            feats, coords = layer(feats, coords)
+            
+        return feats
     
 class AttentivePooling(nn.Module):
     def __init__(self, input_size=1280, hidden_size=1280):
@@ -123,6 +215,8 @@ class MoleculeModel(nn.Module):
 
         self.create_encoder(args)
         
+        if args.include_embed_features: self.create_embed_model(args)
+        
         print('Creating protein model')
         self.create_protein_model(args)
         self.create_ffn(args)
@@ -131,6 +225,13 @@ class MoleculeModel(nn.Module):
         # print('Creating graph sequence model')
         # self.create_graph_sequence_model(args)
 
+    def create_embed_model(self, args: TrainArgs) -> None:
+        """
+        Creates the embedding model.
+        :param args: A :class:`~chemprop.args.TrainArgs` object containing model arguments.
+        """
+        self.embed_model = EmbedderModel(args)
+        
     def create_sequence_model(self, args: TrainArgs) -> None:
         """
         Creates the sequence model.
@@ -166,8 +267,12 @@ class MoleculeModel(nn.Module):
             resnet_config = ProteinResNetConfig(hidden_size=args.seq_embed_dim)
             self.resnet = ResNet(resnet_config).to(self.device)
             
+        elif self.args.use_egnn:
+            depth = 3
+            self.egnn_net = EGNN_Net(self.args.seq_embed_dim, self.device)
+            
         # For rotary positional embeddings
-        self.rotary_embedder = RotaryEmbedding(dim=32)
+        self.rotary_embedder = RotaryEmbedding(dim=args.seq_embed_dim//4)
         
         # For self-attention
         self.multihead_attn = nn.MultiheadAttention(args.seq_embed_dim, 
@@ -339,11 +444,14 @@ class MoleculeModel(nn.Module):
             )
         else:
             first_linear_dim_now = atom_first_linear_dim
-            if not args.protein_records_path is None:
+            if not args.skip_protein and not args.protein_records_path is None:
                 first_linear_dim_now += args.seq_embed_dim
                 if args.add_esm_feats:
                     first_linear_dim_now += 1280
-                    
+            
+            elif args.skip_protein and args.include_embed_features:
+                first_linear_dim_now += args.embed_mlp_output_size
+            
             self.readout = build_ffn(
                 first_linear_dim=first_linear_dim_now,
                 hidden_size=args.ffn_hidden_size + args.atom_descriptors_size,
@@ -509,7 +617,17 @@ class MoleculeModel(nn.Module):
                 bond_features_batch,
             )
 
-            if not self.args.protein_records_path is None:
+            if self.args.include_embed_features:
+                embed_feature_arr = torch.from_numpy(np.array(batch[-1].embed_feature_list)).to(torch.int64).to(self.device) + 1
+                try:
+                    # print(max(embed_feature_arr[0]),max(embed_feature_arr[1]))
+                    # print(self.embed_model.embed_layers)
+                    embed_output = self.embed_model(embed_feature_arr)
+                except:
+                    print('Something wrong in embed model')
+                encodings = torch.concat([encodings,embed_output],dim=-1)
+                
+            if not self.args.skip_protein and not self.args.protein_records_path is None:
                 protein_records = batch[-1].protein_record_list
                 
                 seq_arr = [seq_to_tensor(each['seq']) for each in protein_records]
@@ -539,7 +657,33 @@ class MoleculeModel(nn.Module):
                     if self.args.add_esm_feats:
                         seq_pooled_outs = torch.cat([esm_feature_arr.mean(dim=1), 
                                                      seq_pooled_outs], dim=-1)
-                        
+                
+                elif self.args.use_egnn:
+                    # print('egnn')
+                    coord_arr = [torch.as_tensor(each['coords'], 
+                                                 device='cuda', 
+                                                 dtype=torch.float32) for each in protein_records]
+                    
+                    coords = pad_sequence(coord_arr,batch_first=True,
+                                           padding_value=0).to(self.device)[:,:,1,:]
+                    mask = torch.isfinite(coords.sum(dim=(-1)))
+                    coords[~mask] = 0
+
+                    if seq_arr.shape[1]!=coords.shape[1]: 
+                        coords = coords[:,:seq_arr.shape[1],:]
+                        mask = mask[:,:seq_arr.shape[1]]
+                    # ipdb.set_trace()
+                    seq_outs = self.rotary_embedder.rotate_queries_or_keys(seq_outs,
+                                                                 seq_dim=1)
+                    seq_outs = self.egnn_net(seq_outs, coords)
+                    if self.args.add_esm_feats:
+                        seq_outs = torch.cat([esm_feature_arr, seq_outs], dim=-1)
+                    
+                    # pool attentively
+                    if not self.args.skip_attentive_pooling:
+                        seq_pooled_outs, seq_wts = self.attentive_pooler(seq_outs)
+                    else:
+                        seq_pooled_outs = seq_outs.mean(dim=1)
                 else:
                     # add rotary embeddings
                     q = self.rotary_embedder.rotate_queries_or_keys(seq_outs,
@@ -553,7 +697,10 @@ class MoleculeModel(nn.Module):
                         seq_outs = torch.cat([esm_feature_arr, seq_outs], dim=-1)
                         
                     # pool attentively
-                    seq_pooled_outs, seq_wts = self.attentive_pooler(seq_outs)
+                    if not self.args.skip_attentive_pooling:
+                        seq_pooled_outs, seq_wts = self.attentive_pooler(seq_outs)
+                    else:
+                        seq_pooled_outs = seq_outs.mean(dim=1)
                 
                 total_outs = torch.cat([seq_pooled_outs, encodings], dim=-1)
                 output = self.readout(total_outs)

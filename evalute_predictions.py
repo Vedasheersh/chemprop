@@ -6,24 +6,54 @@ import numpy as np
 import plotly.graph_objects as go
 import plotly.io as pio
 
-PARAMETER = 'kcat'
-PREDS_DIR = f'/home/ubuntu/mychemprop/experiments/{PARAMETER}/test_seq_random_evi_ens5_wembed_wesm_wattn_rotary/'
-DATA_DIR = '/home/ubuntu/mychemprop/CatPred-DB/data/processed/splits_wpdbs/'
+dir_prefix = sys.argv[2]
+PARAMETER = sys.argv[1]
+PREDS_DIR = f'../experiments/{PARAMETER}/test/{dir_prefix}'
+DATA_DIR = '../CatPred-DB/data/processed/splits_wpdbs/'
 
 PREDFILE_PREFIX = 'test_preds_unc_evi_mvewt_' #seq80.csv
 DATAFILE_PREFIX = f'{PARAMETER}-random_test_sequence_' #80cluster.csv
 
 TARGETCOL = f'log10{PARAMETER}_max' if PARAMETER=='kcat' else f'log10{PARAMETER}_mean'
-STDEVCOL = f'{TARGETCOL}_evidential_total_mve_weighting_stdev'
+STDEVCOL = f'{TARGETCOL}_mve_uncal_var'#f'{TARGETCOL}_evidential_total_mve_weighting_stdev' 
 
 SMILESCOL = 'reactant_smiles' if PARAMETER=='kcat' else 'substrate_smiles'
 
 RANGE = [0,20,40,60,80,99]
+import ipdb
 
-def _calc_metrics(target, pred):
+def _error_calc(target, pred):
+    errors = np.abs(np.array(target)-np.array(pred))
+    bins = np.arange(0, max(errors) + 0.1, 0.1)
+    freqs,bin_edges = np.histogram(errors, bins)
+    percs = 100*freqs/len(errors)
+    cum_percs = np.cumsum(percs)
+    
+    #ipdb.set_trace()
+    try:
+        index_err1 = np.where(bin_edges==1.)[0][0]
+        cum_perc_err1 = cum_percs[index_err1]
+    except:
+        cum_perc_err1 = None
+    bin_edges = bin_edges[1:]
+    return cum_perc_err1, bin_edges, cum_percs
+
+def _bin_by_std(target, pred, std, cutoff):
+    df = pd.DataFrame({'target':target, 'pred': pred, 'stdev': std})
+    return df[df.stdev<=cutoff]
+
+def _calc_metrics(target, pred, std):
+    std_bins = [0.25,0.5,0.75,1.0,1.25,1.5,1.75,2.0,10]
+    cum_perc_err1 = {}
+    for bin in std_bins:
+        df = _bin_by_std(target, pred, std, bin)
+        target_, pred_ = df.target, df.pred
+        cum_perc_err1[bin], bins, cums = _error_calc(target_, pred_)
+        
     return {'r2': r2_score(target, pred),
            'mae': mean_absolute_error(target,pred),
-           'mse': mean_squared_error(target,pred)}
+           'mse': mean_squared_error(target,pred), 
+            'cum_perc_err1': cum_perc_err1}
 
 color1 = 'rgba(203, 101, 95, 0.8)'
 color2 = 'rgba(92, 143, 198, 0.8)'
@@ -36,15 +66,15 @@ else: color = color3
 def make_boxplot(percentile_stds, percentile_mae_avg, plot_outname, binwidth, color):
     # Binning y values by x values with step ranges starting from 0 in intervals of 0.5
     bins = np.arange(0, max(percentile_stds) + binwidth + binwidth/5, binwidth)  # Adjust range calculation
-    print(bins)
+    # print(bins)
     digitized = np.digitize(percentile_stds, bins)
-    print(digitized)
+    #print(digitized)
     binned_data = {i: [] for i in range(1, len(bins))}  # Extend range to include the first box
     
     for i, val in enumerate(digitized):
         binned_data[val].append(percentile_mae_avg[i])
 
-    print(binned_data)
+    #print(binned_data)
     
     # Create layout for aesthetics
     layout = go.Layout(
@@ -89,7 +119,7 @@ def _calc_metrics_unc(errors, stds, param, binwidth=0.3):
     percentiles = np.arange(1,99,0.1)
     stds, errors = zip(*sorted(zip(stds, errors)))
     bins = np.arange(0, max(stds) + binwidth, binwidth)  # Adjust range calculation
-    print(bins)
+    # print(bins)
     digitized = np.digitize(stds, bins)
     percentile_stds = []
     for perc in percentiles:
@@ -125,6 +155,6 @@ for R in RANGE:
     pred = preds_df[TARGETCOL]
     target = [data_df.loc[ind][TARGETCOL] for ind in preds_df.index]
     std = preds_df[STDEVCOL]
-    print(R, _calc_metrics(target,pred))
+    print(R, _calc_metrics(target,pred,std))
     if R==0: _calc_metrics_unc(np.abs(target-pred),std, PARAMETER)
     # break
