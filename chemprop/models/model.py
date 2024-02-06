@@ -40,6 +40,7 @@ def exists(val):
 def default(val, d):
     return val if exists(val) else d
     
+<<<<<<< HEAD
     
 class EmbedderModel(nn.Module):
     """A :class:`EmbedderModel` is a model which contains a series of embedding layers followed by an MLP layer."""
@@ -90,6 +91,8 @@ class EmbedderModel(nn.Module):
 
         return output
     
+=======
+>>>>>>> 6295878fd227244258e121307b541289b35c628e
 class EGNN_Net(nn.Module):
     def __init__(self, dim, device, depth = 3, edge_dim = 0,
                                 m_dim = 16,
@@ -101,7 +104,11 @@ class EGNN_Net(nn.Module):
                                 norm_coors = True,
                                 norm_coors_scale_init = 1e-2,
                                 update_feats = True,
+<<<<<<< HEAD
                                 update_coors = False,
+=======
+                                update_coors = True,
+>>>>>>> 6295878fd227244258e121307b541289b35c628e
                                 only_sparse_neighbors = False,
                                 valid_radius = float('inf'),
                                 m_pool_method = 'sum',
@@ -617,6 +624,7 @@ class MoleculeModel(nn.Module):
                 bond_features_batch,
             )
 
+<<<<<<< HEAD
             if self.args.include_embed_features:
                 embed_feature_arr = torch.from_numpy(np.array(batch[-1].embed_feature_list)).to(torch.int64).to(self.device) + 1
                 try:
@@ -627,6 +635,8 @@ class MoleculeModel(nn.Module):
                     print('Something wrong in embed model')
                 encodings = torch.concat([encodings,embed_output],dim=-1)
                 
+=======
+>>>>>>> 6295878fd227244258e121307b541289b35c628e
             if not self.args.skip_protein and not self.args.protein_records_path is None:
                 protein_records = batch[-1].protein_record_list
                 

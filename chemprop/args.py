@@ -406,6 +406,7 @@ class TrainArgs(CommonArgs):
     """ Whether to add esm features """
     use_egnn: bool = False
     """ Whether to use egnn """
+<<<<<<< HEAD
     include_embed_features: bool = False
     """ Whether to use embed features"""
     embed_dropout: bool = 0.0
@@ -420,6 +421,8 @@ class TrainArgs(CommonArgs):
     """ Embed MLP layers"""
     embed_size_to_dim_power: float = 0.33
     """param for embed dim"""
+=======
+>>>>>>> 6295878fd227244258e121307b541289b35c628e
     esm_feat_size: int = 1280
     """ sequence feature size to input sequence model."""
     protein_mlp_hidden_size: int = 600
@@ -933,6 +936,11 @@ class TrainArgs(CommonArgs):
 
 class PredictArgs(CommonArgs):
     """:class:`PredictArgs` includes :class:`CommonArgs` along with additional arguments used for predicting with a Chemprop model."""
+<<<<<<< HEAD
+=======
+    unk: str = 'hi'
+    """ Random """
+>>>>>>> 6295878fd227244258e121307b541289b35c628e
     protein_records_path: str = None
     """ Path to protein records json file """
     test_path: str
@@ -984,6 +992,11 @@ class PredictArgs(CommonArgs):
     """Path to the extra bond descriptors that will be used as bond features to featurize a given molecule."""
     def __init__(self):
         super(PredictArgs, self).__init__()
+<<<<<<< HEAD
+=======
+        print('hi'*100)
+        self.add_argument('--unk', default='un')
+>>>>>>> 6295878fd227244258e121307b541289b35c628e
         
     @property
     def ensemble_size(self) -> int:

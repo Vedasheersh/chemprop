@@ -396,6 +396,8 @@ def make_predictions(
 
     num_models = len(args.checkpoint_paths)
 
+    # print(args, train_args)
+    
     set_features(args, train_args)
 
     # Note: to get the invalid SMILES for your data, use the get_invalid_smiles_from_file or get_invalid_smiles_from_list functions from data/utils.py
