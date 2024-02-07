@@ -194,7 +194,6 @@ class MoleculeDatapoint:
             self.ec_features.append(inte)
             
         for word in tax_words:
-            self.tax_features.append(self.vocabulary[word][row[word]])
             now = str(row[word])
             inte = int(self.vocabulary[word][now]) if now in self.vocabulary[word] else -1
             self.tax_features.append(inte)

@@ -158,6 +158,7 @@ def load_checkpoint(
 
     return model
 
+import ipdb
 
 def overwrite_state_dict(
     loaded_param_name: str,
@@ -177,6 +178,10 @@ def overwrite_state_dict(
     """
     debug = logger.debug if logger is not None else print
 
+    if not loaded_param_name in loaded_state_dict:
+        debug(f'Weird...Pretrained parameter "{loaded_param_name}" cannot be found in pretrained parameters.')
+        return model_state_dict
+    # try:
     if model_param_name not in model_state_dict:
         debug(f'Pretrained parameter "{model_param_name}" cannot be found in model parameters.')
 
@@ -190,6 +195,8 @@ def overwrite_state_dict(
     else:
         debug(f'Loading pretrained parameter "{model_param_name}".')
         model_state_dict[model_param_name] = loaded_state_dict[loaded_param_name]
+    # except:
+    #     ipdb.set_trace()
 
     return model_state_dict
 
