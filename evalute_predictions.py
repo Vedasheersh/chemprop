@@ -49,21 +49,18 @@ def _bin_by_std(target, pred, std, cutoff):
 def _calc_metrics(target, pred, std):
     std_bins = [0.25,0.5,0.75,1.0,1.25,1.5,1.75,2.0,10]
     cum_perc_err1 = {}
-    metrics_std = {}
+    metrics_std = {'r2':{},'mae':{},'mse':{}}
     for bin in std_bins:
         df = _bin_by_std(target, pred, std, bin)
         target_, pred_ = df.target, df.pred
         cum_perc_err1[bin], bins, cums = _error_calc(target_, pred_)
-        metrics_std[bin] = {}
-        metrics_std[bin]['r2'] = r2_score(target_, pred_)
-        metrics_std[bin]['mae'] = mean_absolute_error(target_,pred_)
-        metrics_std[bin]['mse'] = mean_squared_error(target_,pred_)
-        
+        metrics_std['r2'][bin] = r2_score(target_, pred_)
+        metrics_std['mae'][bin] = mean_absolute_error(target_,pred_)
+        metrics_std['mse'][bin] = mean_squared_error(target_,pred_)
+    metrics_std['cum_perc_err1'] = cum_perc_err1
     return {'r2': r2_score(target, pred),
            'mae': mean_absolute_error(target,pred),
-           'mse': mean_squared_error(target,pred), 
-            'cum_perc_err1': cum_perc_err1,
-           'metrics_std': metrics_std}
+           'mse': mean_squared_error(target,pred)}, metrics_std
 
 color1 = 'rgba(203, 101, 95, 0.8)'
 color2 = 'rgba(92, 143, 198, 0.8)'
@@ -167,8 +164,15 @@ for R in RANGE:
     std = preds_df[STDEVCOL]
     print('-'*50)
     print('Cutoff:', R)
-    print(_calc_metrics(target,pred,std))
+    metrics, metrics_std = _calc_metrics(target,pred,std)
+    for metric in metrics:
+        print(metric, metrics[metric])
     print('-'*50)
+    for metric in metrics:
+        print(metric)
+        for bin in metrics_std[metric]:
+            print(bin, metrics_std[metric][bin])
+        
     if R==0: _calc_metrics_unc(np.abs(target-pred),std, PARAMETER)
     # break
 
