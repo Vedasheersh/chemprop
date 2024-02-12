@@ -168,13 +168,17 @@ for R in RANGE:
     preds_df.index = preds_df[SMILESCOL] + preds_df['sequence']
     pred = preds_df[TARGETCOL]
     target = [data_df.loc[ind][TARGETCOL] for ind in preds_df.index]
+    f = open(f'{PARAMETER}_{R}_scatter.csv','w')
+    for t, p in zip(target, pred):
+        f.write(f'{t},{p}\n')
+    f.close()
     std = preds_df[STDEVCOL]
     print('-'*50)
     print('Cutoff:', R)
     metrics, metrics_std = _calc_metrics(target,pred,std)
     print('-'*50)
     print('Naive mae with mean from training:')
-    print(mean_absolute_error(target, [TRAINVAL_MEANS[PARAMETER]]*len(target)))
+    print(mean_squared_error(target, [TRAINVAL_MEANS[PARAMETER]]*len(target)))
     print('-'*50)
     for metric in metrics:
         print(metric, metrics[metric])
@@ -188,3 +192,11 @@ for R in RANGE:
     if R==0: _calc_metrics_unc(np.abs(target-pred),std, PARAMETER)
     # break
 
+# for R in RANGE:
+#     if R==0:
+#         PREDFILE_PREFIX2 = PREDFILE_PREFIX[:-1]
+#         DATAFILE_PREFIX2 = f'{PARAMETER}-random_test'
+#         datafile = f'{DATA_DIR}/{DATAFILE_PREFIX2}.csv'
+#         predsfile = f'{PREDS_DIR}/{PREDFILE_PREFIX2}.csv'
+#         break
+    
