@@ -11,6 +11,7 @@ PARAMETER = sys.argv[1]
 PREDS_DIR = f'../experiments/{PARAMETER}/test/{dir_prefix}'
 DATA_DIR = '../CatPred-DB/data/processed/splits_wpdbs/'
 
+TRAINVAL_MEANS = {'kcat': 0.96224, 'km': -0.72606 ,'ki': -1.84344}
 PREDFILE_PREFIX = 'test_preds_unc_evi_mvewt_' #seq80.csv
 DATAFILE_PREFIX = f'{PARAMETER}-random_test_sequence_' #80cluster.csv
 
@@ -50,9 +51,12 @@ def _calc_metrics(target, pred, std):
     std_bins = [0.25,0.5,0.75,1.0,1.25,1.5,1.75,2.0,10]
     cum_perc_err1 = {}
     metrics_std = {'r2':{},'mae':{},'mse':{}}
+    target_linear = np.power(10, target)
+    pred_linear = np.power(10, pred)
     for bin in std_bins:
         df = _bin_by_std(target, pred, std, bin)
         target_, pred_ = df.target, df.pred
+        print(len(target_), len(pred_))
         cum_perc_err1[bin], bins, cums = _error_calc(target_, pred_)
         metrics_std['r2'][bin] = r2_score(target_, pred_)
         metrics_std['mae'][bin] = mean_absolute_error(target_,pred_)
@@ -60,7 +64,10 @@ def _calc_metrics(target, pred, std):
     metrics_std['cum_perc_err1'] = cum_perc_err1
     return {'r2': r2_score(target, pred),
            'mae': mean_absolute_error(target,pred),
-           'mse': mean_squared_error(target,pred)}, metrics_std
+           'mse': mean_squared_error(target,pred), 
+            'r2_linear': r2_score(target_linear, pred_linear),
+            'mae_linear': mean_absolute_error(target_linear, pred_linear),
+            'mse_linear': mean_squared_error(target_linear, pred_linear)}, metrics_std
 
 color1 = 'rgba(203, 101, 95, 0.8)'
 color2 = 'rgba(92, 143, 198, 0.8)'
@@ -165,10 +172,15 @@ for R in RANGE:
     print('-'*50)
     print('Cutoff:', R)
     metrics, metrics_std = _calc_metrics(target,pred,std)
+    print('-'*50)
+    print('Naive mae with mean from training:')
+    print(mean_absolute_error(target, [TRAINVAL_MEANS[PARAMETER]]*len(target)))
+    print('-'*50)
     for metric in metrics:
         print(metric, metrics[metric])
     print('-'*50)
     for metric in metrics:
+        if not metric in metrics_std: continue
         print(metric)
         for bin in metrics_std[metric]:
             print(bin, metrics_std[metric][bin])
