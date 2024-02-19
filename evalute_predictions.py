@@ -66,7 +66,7 @@ def _calc_metrics(target, pred, std):
     return {'r2': r2_score(target, pred),
            'mae': mean_absolute_error(target,pred),
            'mse': mean_squared_error(target,pred), 
-            'rho-err-std': spearmanr(np.abs(target-pred), std)[0],
+            'rho-err-std': spearmanr(np.abs(target-pred), std,alternative='less'),
             'r2_linear': r2_score(target_linear, pred_linear),
             'mae_linear': mean_absolute_error(target_linear, pred_linear),
             'mse_linear': mean_squared_error(target_linear, pred_linear)}, metrics_std
