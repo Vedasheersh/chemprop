@@ -5,6 +5,7 @@ from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error
 import numpy as np
 import plotly.graph_objects as go
 import plotly.io as pio
+from scipy.stats import spearmanr 
 
 dir_prefix = sys.argv[2]
 PARAMETER = sys.argv[1]
@@ -65,6 +66,7 @@ def _calc_metrics(target, pred, std):
     return {'r2': r2_score(target, pred),
            'mae': mean_absolute_error(target,pred),
            'mse': mean_squared_error(target,pred), 
+            'rho-err-std': spearmanr(np.abs(target-pred), std)[0],
             'r2_linear': r2_score(target_linear, pred_linear),
             'mae_linear': mean_absolute_error(target_linear, pred_linear),
             'mse_linear': mean_squared_error(target_linear, pred_linear)}, metrics_std
@@ -183,8 +185,8 @@ for R in RANGE:
     for metric in metrics:
         print(metric, metrics[metric])
     print('-'*50)
-    for metric in metrics:
-        if not metric in metrics_std: continue
+    for metric in metrics_std:
+        # if not metric in metrics_std: continue
         print(metric)
         for bin in metrics_std[metric]:
             print(bin, metrics_std[metric][bin])
