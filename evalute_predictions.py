@@ -50,7 +50,7 @@ def _bin_by_std(target, pred, std, cutoff):
 
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy.stats import linregress
+from scipy.stats import linregress, pearsonr
 
 def plot_corr_errors(x, y, savename='temp.pdf'):
     # Calculate 2D histogram
@@ -79,6 +79,8 @@ def plot_corr_errors(x, y, savename='temp.pdf'):
     # Add labels and title
     plt.xlabel('X')
     plt.ylabel('Y')
+    plt.xlim(0, 2)
+    plt.ylim(0, 2)
     plt.title('Scatter plot with points colored by density and linear fit')
     plt.legend()
 
@@ -105,6 +107,7 @@ def _calc_metrics(target, pred, std, R):
            'mae': mean_absolute_error(target,pred),
            'mse': mean_squared_error(target,pred), 
             'rho-err-std': spearmanr(np.abs(target-pred), std,alternative='two-sided'),
+            'r-err-std': pearsonr(np.abs(target-pred), std),
             'r2_linear': r2_score(target_linear, pred_linear),
             'mae_linear': mean_absolute_error(target_linear, pred_linear),
             'mse_linear': mean_squared_error(target_linear, pred_linear)}, metrics_std
