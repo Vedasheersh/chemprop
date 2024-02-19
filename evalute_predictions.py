@@ -48,7 +48,44 @@ def _bin_by_std(target, pred, std, cutoff):
     df = pd.DataFrame({'target':target, 'pred': pred, 'stdev': std})
     return df[df.stdev<=cutoff]
 
-def _calc_metrics(target, pred, std):
+import matplotlib.pyplot as plt
+import numpy as np
+from scipy.stats import linregress
+
+def plot_corr_errors(x, y, savename='temp.pdf'):
+    # Calculate 2D histogram
+    heatmap, xedges, yedges = np.histogram2d(x, y, bins=50, density=True)
+
+    # Get density values for each point
+    x_idx = np.clip(np.digitize(x, xedges) - 1, 0, len(xedges) - 2)
+    y_idx = np.clip(np.digitize(y, yedges) - 1, 0, len(yedges) - 2)
+    densities = heatmap[x_idx, y_idx]
+
+    # Perform linear regression
+    slope, intercept, _, _, _ = linregress(x, y)
+    slope = 1
+    intercept = 0
+    line_x = np.linspace(x.min(), x.max(), 100)
+    line_y = slope * line_x + intercept
+
+    # Create scatter plot with colored points using 'magma' colormap
+    plt.figure(figsize=(8, 6))
+    plt.scatter(x, y, c=densities, cmap='magma')
+    plt.colorbar(label='Density')
+
+    # Add the regression line with forest green color
+    plt.plot(line_x, line_y, color='forestgreen', label='Linear fit')
+
+    # Add labels and title
+    plt.xlabel('X')
+    plt.ylabel('Y')
+    plt.title('Scatter plot with points colored by density and linear fit')
+    plt.legend()
+
+    # Save the figure as a PDF
+    plt.savefig(savename)
+
+def _calc_metrics(target, pred, std, R):
     std_bins = [0.25,0.5,0.75,1.0,1.25,1.5,1.75,2.0,10]
     cum_perc_err1 = {}
     metrics_std = {'r2':{},'mae':{},'mse':{}}
@@ -63,10 +100,11 @@ def _calc_metrics(target, pred, std):
         metrics_std['mae'][bin] = mean_absolute_error(target_,pred_)
         metrics_std['mse'][bin] = mean_squared_error(target_,pred_)
     metrics_std['cum_perc_err1'] = cum_perc_err1
+    plot_corr_errors(std, np.abs(target-pred), f'std-err-plot_{R}.pdf')
     return {'r2': r2_score(target, pred),
            'mae': mean_absolute_error(target,pred),
            'mse': mean_squared_error(target,pred), 
-            'rho-err-std': spearmanr(np.abs(target-pred), std,alternative='less'),
+            'rho-err-std': spearmanr(np.abs(target-pred), std,alternative='two-sided'),
             'r2_linear': r2_score(target_linear, pred_linear),
             'mae_linear': mean_absolute_error(target_linear, pred_linear),
             'mse_linear': mean_squared_error(target_linear, pred_linear)}, metrics_std
@@ -177,7 +215,7 @@ for R in RANGE:
     std = preds_df[STDEVCOL]
     print('-'*50)
     print('Cutoff:', R)
-    metrics, metrics_std = _calc_metrics(target,pred,std)
+    metrics, metrics_std = _calc_metrics(target,pred,std, R)
     print('-'*50)
     print('Naive mae with mean from training:')
     print(mean_squared_error(target, [TRAINVAL_MEANS[PARAMETER]]*len(target)))
