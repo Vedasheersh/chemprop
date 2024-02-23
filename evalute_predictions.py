@@ -27,7 +27,8 @@ import ipdb
 
 def _error_calc(target, pred):
     errors = np.abs(np.array(target)-np.array(pred))
-    bins = np.arange(0, max(errors) + 0.1, 0.1)
+    # ipdb.set_trace()
+    bins = np.arange(0, max(errors) + 0.5, 0.5)
     freqs,bin_edges = np.histogram(errors, bins)
     percs = 100*freqs/len(errors)
     cum_percs = np.cumsum(percs)
@@ -88,7 +89,7 @@ def plot_corr_errors(x, y, savename='temp.pdf'):
     plt.savefig(savename)
 
 def _calc_metrics(target, pred, std, R):
-    std_bins = [0.25,0.5,0.75,1.0,1.25,1.5,1.75,2.0,10]
+    std_bins = [0.5,1.0,1.5,2.0,2.5,10]
     cum_perc_err1 = {}
     metrics_std = {'r2':{},'mae':{},'mse':{}}
     target_linear = np.power(10, target)
@@ -172,7 +173,7 @@ def make_boxplot(percentile_stds, percentile_mae_avg, plot_outname, binwidth, co
     # Save the boxplot as SVG file
     pio.write_image(fig, plot_outname)
     
-def _calc_metrics_unc(errors, stds, param, binwidth=0.3):
+def _calc_metrics_unc(errors, stds, param, binwidth=0.5):
     percentiles = np.arange(1,99,0.1)
     stds, errors = zip(*sorted(zip(stds, errors)))
     bins = np.arange(0, max(stds) + binwidth, binwidth)  # Adjust range calculation
@@ -193,7 +194,7 @@ def _calc_metrics_unc(errors, stds, param, binwidth=0.3):
         percentile_mae_avg.append(np.average(items))
         percentile_mae_std.append(np.std(items))
         
-    make_boxplot(percentile_stds, percentile_mae_avg, f'{param}_unc_boxplot.svg', 0.2, color)
+    make_boxplot(percentile_stds, percentile_mae_avg, f'{param}_unc_boxplot.svg', 0.8, color)
 
 for R in RANGE:
     if R==0:
@@ -215,6 +216,7 @@ for R in RANGE:
     for t, p in zip(target, pred):
         f.write(f'{t},{p}\n')
     f.close()
+    print(preds_df.columns)
     std = preds_df[STDEVCOL]
     print('-'*50)
     print('Cutoff:', R)
@@ -232,7 +234,7 @@ for R in RANGE:
         for bin in metrics_std[metric]:
             print(bin, metrics_std[metric][bin])
         
-    if R==0: _calc_metrics_unc(np.abs(target-pred),std, PARAMETER)
+    if R==0: _calc_metrics_unc(np.abs(target-pred),std, PARAMETER, 0.5)
     # break
 
 # for R in RANGE:
@@ -242,4 +244,4 @@ for R in RANGE:
 #         datafile = f'{DATA_DIR}/{DATAFILE_PREFIX2}.csv'
 #         predsfile = f'{PREDS_DIR}/{PREDFILE_PREFIX2}.csv'
 #         break
-    
+ 
