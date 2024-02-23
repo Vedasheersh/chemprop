@@ -28,7 +28,7 @@ import ipdb
 def _error_calc(target, pred):
     errors = np.abs(np.array(target)-np.array(pred))
     # ipdb.set_trace()
-    bins = np.arange(0, max(errors) + 0.5, 0.5)
+    bins = np.arange(0, max(errors) + 0.1, 0.1)
     freqs,bin_edges = np.histogram(errors, bins)
     percs = 100*freqs/len(errors)
     cum_percs = np.cumsum(percs)
@@ -91,7 +91,7 @@ def plot_corr_errors(x, y, savename='temp.pdf'):
 def _calc_metrics(target, pred, std, R):
     # ipdb.set_trace()
     quartiles = np.percentile(std, [25, 50, 75, 100])
-    std_bins = quartiles#[0.5,1.0,1.5,2.0,2.5,10]
+    std_bins = list(quartiles)#[0.5,1.0,1.5,2.0,2.5,10]
     cum_perc_err1 = {}
     metrics_std = {'r2':{},'mae':{},'mse':{}}
     target_linear = np.power(10, target)
