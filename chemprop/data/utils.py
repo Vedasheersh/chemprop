@@ -401,7 +401,10 @@ def get_data(path: str,
     else:
         protein_records = json.load(open(protein_records_path))
     
-    vocabulary = json.load(open(vocabulary_path))
+    if args.include_embed_features:
+        vocabulary = json.load(open(vocabulary_path))
+    else:
+        vocabulary = None
     
     if args is not None:
         # Prefer explicit function arguments but default to args if not provided
@@ -419,10 +422,11 @@ def get_data(path: str,
         max_data_size = max_data_size if max_data_size is not None else args.max_data_size
         loss_function = loss_function if loss_function is not None else args.loss_function
 
-    ec_words = ['ec1','ec2','ec3','ec']
-    tax_words = ['superkingdom','phylum','class','order','family','genus','species']
-    # get vocab sizes
-    args.embed_sizes = [len(vocabulary[word])+1 for word in ec_words+tax_words]
+    if not vocabulary is None:
+        ec_words = ['ec1','ec2','ec3','ec']
+        tax_words = ['superkingdom','phylum','class','order','family','genus','species']
+        # get vocab sizes
+        args.embed_sizes = [len(vocabulary[word])+1 for word in ec_words+tax_words]
     
     if isinstance(smiles_columns, str) or smiles_columns is None:
         smiles_columns = preprocess_smiles_columns(path=path, smiles_columns=smiles_columns)

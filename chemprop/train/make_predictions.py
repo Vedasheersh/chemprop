@@ -66,6 +66,7 @@ def load_data(args: PredictArgs, smiles: List[List[str]]):
     else:
         full_data = get_data(
             protein_records_path=args.protein_records_path,
+            vocabulary_path=args.vocabulary_path,
             path=args.test_path,
             smiles_columns=args.smiles_columns,
             target_columns=[],
