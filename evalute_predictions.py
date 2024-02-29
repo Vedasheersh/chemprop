@@ -90,7 +90,7 @@ def plot_corr_errors(x, y, savename='temp.pdf'):
 
 def _calc_metrics(target, pred, std, R):
     # ipdb.set_trace()
-    quartiles = np.percentile(std, [25, 50, 75, 100])
+    quartiles = np.percentile(std, [5, 25, 50, 75, 100])
     std_bins = list(quartiles)#[0.5,1.0,1.5,2.0,2.5,10]
     cum_perc_err1 = {}
     metrics_std = {'r2':{},'mae':{},'mse':{}}
