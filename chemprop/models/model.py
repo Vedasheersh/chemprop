@@ -6,21 +6,21 @@ import numpy as np
 from rdkit import Chem
 import torch
 import torch.nn as nn
-import torch_geometric
+# import torch_geometric
 
 from .mpn import MPN
 from .ffn import build_ffn, MultiReadout
 # from chemprop.data import ProteinGraphDataset
 # from chemprop.data.gvp_utils import calc_dihedral_feats
 # from .gvp_models import GVPEmbedderModel
-from .transformer_models import TransformerEncoder
-from .cnn_models import ProteinResNetConfig, ResNet
-from .en_transformer.en_transformer import EnTransformer
+# from .transformer_models import TransformerEncoder
+# from .cnn_models import ProteinResNetConfig, ResNet
+# from .en_transformer.en_transformer import EnTransformer
 from chemprop.args import TrainArgs
 from chemprop.features import BatchMolGraph
 from chemprop.nn_utils import initialize_weights
 from torch.nn.utils.rnn import pad_sequence
-from egnn_pytorch import EGNN
+# from egnn_pytorch import EGNN
 
 from collections import OrderedDict
 import ipdb
@@ -31,7 +31,7 @@ import torch.nn as nn
 import ipdb
 import torch
 from torch import nn
-from einops import rearrange
+# from einops import rearrange
 from torch import einsum
 
 def exists(val):

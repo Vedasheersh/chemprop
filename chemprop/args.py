@@ -6,7 +6,7 @@ from typing import List, Optional
 from typing_extensions import Literal
 from packaging import version
 from warnings import warn
-from egnn_pytorch import EGNN
+# from egnn_pytorch import EGNN
 
 import torch
 from tap import Tap  # pip install typed-argument-parser (https://github.com/swansonk14/typed-argument-parser)
