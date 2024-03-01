@@ -20,7 +20,7 @@ from chemprop.args import TrainArgs
 from chemprop.features import BatchMolGraph
 from chemprop.nn_utils import initialize_weights
 from torch.nn.utils.rnn import pad_sequence
-# from egnn_pytorch import EGNN
+from egnn_pytorch import EGNN
 
 from collections import OrderedDict
 import ipdb
@@ -268,7 +268,7 @@ class MoleculeModel(nn.Module):
             
         elif self.args.use_egnn:
             depth = 3
-            self.egnn_net = EGNN_Net(self.args.seq_embed_dim, self.device)
+            self.egnn_net = EGNN_Net(self.args.seq_embed_dim, self.device, valid_radius = 15)
             
         # For rotary positional embeddings
         self.rotary_embedder = RotaryEmbedding(dim=args.seq_embed_dim//4)
