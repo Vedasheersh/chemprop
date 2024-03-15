@@ -186,17 +186,18 @@ class MoleculeDatapoint:
         self.ec_features = []
         self.tax_features = []
         
-        ec_words = ['ec1','ec2','ec3','ec']
-        tax_words = ['superkingdom','phylum','class','order','family','genus','species']
-        for word in ec_words:
-            now = str(row[word])
-            inte = int(self.vocabulary[word][now]) if now in self.vocabulary[word] else -1
-            self.ec_features.append(inte)
-            
-        for word in tax_words:
-            now = str(row[word])
-            inte = int(self.vocabulary[word][now]) if now in self.vocabulary[word] else -1
-            self.tax_features.append(inte)
+        if not self.vocabulary is None:
+            ec_words = ['ec1','ec2','ec3','ec']
+            tax_words = ['superkingdom','phylum','class','order','family','genus','species']
+            for word in ec_words:
+                now = str(row[word])
+                inte = int(self.vocabulary[word][now]) if now in self.vocabulary[word] else -1
+                self.ec_features.append(inte)
+
+            for word in tax_words:
+                now = str(row[word])
+                inte = int(self.vocabulary[word][now]) if now in self.vocabulary[word] else -1
+                self.tax_features.append(inte)
             
     @property
     def mol(self) -> List[Union[Chem.Mol, Tuple[Chem.Mol, Chem.Mol]]]:
