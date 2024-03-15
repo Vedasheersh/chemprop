@@ -939,6 +939,8 @@ class PredictArgs(CommonArgs):
     """Path to CSV file containing testing data for which predictions will be made."""
     preds_path: str
     """Path to CSV or PICKLE file where predictions will be saved."""
+    vocabulary_path: str = None
+    """ Path to EC and Taxonomy vocabulary file """
     drop_extra_columns: bool = False
     """Whether to drop all columns from the test data file besides the SMILES columns and the new prediction columns."""
     ensemble_variance: bool = False

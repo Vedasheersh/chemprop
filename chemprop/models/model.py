@@ -28,6 +28,15 @@ import ipdb
 import torch
 from torch import nn
 from einops import rearrange
+import ipdb
+
+import torch
+import torch.nn as nn
+
+import ipdb
+import torch
+from torch import nn
+# from einops import rearrange
 from torch import einsum
 
 def exists(val):
@@ -265,6 +274,7 @@ class MoleculeModel(nn.Module):
         elif self.args.use_egnn:
             depth = 3
             self.egnn_net = EGNN_Net(self.args.seq_embed_dim, self.device)
+            self.egnn_net = EGNN_Net(self.args.seq_embed_dim, self.device, valid_radius = 15)
             
         # For rotary positional embeddings
         self.rotary_embedder = RotaryEmbedding(dim=args.seq_embed_dim//4)
