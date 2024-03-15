@@ -902,12 +902,77 @@ class GVPConvLayer(nn.Module):
             x = x_
         return x
 
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch_geometric.nn import global_mean_pool, MessagePassing
+from torch_geometric.utils import degree
+    
 import numpy as np
 import torch
 import torch.nn as nn
 from torch.distributions import Categorical
 from torch_scatter import scatter_mean
 from typing import Tuple
+
+import torch
+import torch.nn.functional as F
+from torch.nn import Linear, Sequential, BatchNorm1d, ReLU, Dropout
+from torch_geometric.nn import GCNConv, GINConv
+from torch_geometric.nn import global_mean_pool, global_add_pool
+
+class GCN(torch.nn.Module):
+    """GCN"""
+    def __init__(self, dim_in, dim_h):
+        super(GCN, self).__init__()
+        self.conv1 = GCNConv(dim_in, dim_h)
+        self.conv2 = GCNConv(dim_h, dim_h)
+        self.conv3 = GCNConv(dim_h, dim_h)
+
+    def forward(self, x, edge_index, batch):
+        # Node embeddings 
+        h = self.conv1(x, edge_index)
+        h = h.relu()
+        h = self.conv2(h, edge_index)
+        h = h.relu()
+        h = self.conv3(h, edge_index)
+
+        # Graph-level readout
+        hG = global_mean_pool(h, batch)
+
+        return hG
+
+class GIN(torch.nn.Module):
+    """GIN"""
+    def __init__(self, dim_in, dim_h):
+        super(GIN, self).__init__()
+        self.conv1 = GINConv(
+            Sequential(Linear(dim_in, dim_h),
+                       BatchNorm1d(dim_h), ReLU(),
+                       Linear(dim_h, dim_h), ReLU()))
+        self.conv2 = GINConv(
+            Sequential(Linear(dim_h, dim_h), BatchNorm1d(dim_h), ReLU(),
+                       Linear(dim_h, dim_h), ReLU()))
+        self.conv3 = GINConv(
+            Sequential(Linear(dim_h, dim_h), BatchNorm1d(dim_h), ReLU(),
+                       Linear(dim_h, dim_h), ReLU()))
+
+    def forward(self, x, edge_index, batch):
+        # Node embeddings 
+        h1 = self.conv1(x, edge_index)
+        h2 = self.conv2(h1, edge_index)
+        h3 = self.conv3(h2, edge_index)
+
+        # Graph-level readout
+        # ipdb.set_trace()
+        h1 = global_add_pool(h1, batch)
+        h2 = global_add_pool(h2, batch)
+        h3 = global_add_pool(h3, batch)
+
+        # Concatenate graph embeddings
+        h = torch.cat((h1, h2, h3), dim=1)
+        
+        return h
 
 class GVPEmbedderModel(nn.Module):
     """Bert + GVP-GNN head (LM-GVP).
@@ -932,6 +997,8 @@ class GVPEmbedderModel(nn.Module):
         esm_dim = 1280,
         residual=True,
         include_esm_feats = False,
+        use_gin = False,
+        device = 'cpu',
         **kwargs,
     ):
         """
@@ -955,6 +1022,7 @@ class GVPEmbedderModel(nn.Module):
         self.esm_dim = esm_dim
         self.residual = residual
         self.include_esm_feats = include_esm_feats
+        self.use_gin = use_gin
         
         if include_esm_feats:
             node_in_dim = (node_in_dim[0] + seq_embed_dim + self.esm_dim, node_in_dim[1])
@@ -995,6 +1063,11 @@ class GVPEmbedderModel(nn.Module):
             nn.Dropout(p=drop_rate),
             nn.Linear(2 * ns, ns),
         )
+        
+        self.device = device
+        # ipdb.set_trace()
+        if self.use_gin:
+            self.gin = GIN(dim_in = node_in_dim[0], dim_h = node_h_dim[0])
 
     def forward(self, batch):
         """Perform the forward pass.
@@ -1005,7 +1078,21 @@ class GVPEmbedderModel(nn.Module):
         Returns:
             logits
         """
-        logits = self._forward(batch)
+        if self.use_gin:
+            if not self.W_s is None:
+                seq = self.W_s(batch.seq)
+            else:
+                seq = batch.seq_feats
+
+            x = batch.node_s
+            x = torch.cat([x, seq], dim=-1).to(self.device)
+
+            edge_index = batch.edge_index.to(self.device)
+            logits = self.gin(x, edge_index, batch.batch)
+            
+        else:
+            logits = self._forward(batch)
+            
         return logits
 
     def _forward(self, batch):
@@ -1053,4 +1140,3 @@ class GVPEmbedderModel(nn.Module):
         out = scatter_mean(out, batch.batch, dim=0)
         
         return out#self.dense(out)
-

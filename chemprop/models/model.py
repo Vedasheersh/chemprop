@@ -299,7 +299,8 @@ class MoleculeModel(nn.Module):
                                              seq_embed_dim = args.seq_embed_dim,
                                              num_layers = args.gvp_num_layers,
                                              include_esm_feats = args.add_esm_feats,
-                                             residual = False)
+                                             residual = False, use_gin = args.use_gin,
+                                             device = self.device)
             self.attentive_pooler = AttentivePooling(1280, 1280).to(self.device)
             self.protein_ds = lambda data_list: ProteinGraphDataset(data_list,
                                                                     include_esm_feats = args.add_esm_feats)
@@ -387,6 +388,8 @@ class MoleculeModel(nn.Module):
             elif args.use_gvp:
                 first_linear_dim_now += args.gvp_node_hidden_dims[0]
                     # first_linear_dim_now += 
+            elif args.use_gin:
+                first_linear_dim_now = 3*args.gvp_node_hidden_dims[0]
             
             elif args.skip_protein and args.include_embed_features:
                 first_linear_dim_now += args.embed_mlp_output_size
@@ -612,8 +615,7 @@ class MoleculeModel(nn.Module):
                         coords = coords[:,:seq_arr.shape[1],:]
                         mask = mask[:,:seq_arr.shape[1]]
                     # ipdb.set_trace()
-                    seq_outs = self.rotary_embedder.rotate_queries_or_keys(seq_outs,
-                                                                 seq_dim=1)
+                    seq_outs = self.rotary_embedder.rotate_queries_or_keys(seq_outs,seq_dim=1)
                     seq_outs = self.egnn_net(seq_outs, coords)
                     if self.args.add_esm_feats:
                         seq_outs = torch.cat([esm_feature_arr, seq_outs], dim=-1)
@@ -651,7 +653,7 @@ class MoleculeModel(nn.Module):
                         seq_pooled_outs, seq_wts = self.attentive_pooler(seq_outs)
                     else:
                         seq_pooled_outs = seq_outs.mean(dim=1)
-                
+                # ipdb.set_trace()
                 total_outs = torch.cat([seq_pooled_outs, encodings], dim=-1)
                 output = self.readout(total_outs)
                 

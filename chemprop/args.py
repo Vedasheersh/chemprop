@@ -386,8 +386,10 @@ class TrainArgs(CommonArgs):
     """ Whether to use transformer """
     use_resnet: bool = False
     """ Whether to use resnet """
+    use_gin: bool = False
+    """  Use GIN or not"""
     use_gvp: bool = False
-    """ Skip GVP or not """
+    """ Use GVP or not """
     skip_attentive_pooling: bool = False
     """ To skip attentive pooling or not """
     gvp_num_layers: int = 3
