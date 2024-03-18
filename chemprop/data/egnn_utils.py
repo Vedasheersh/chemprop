@@ -82,9 +82,9 @@ class EGNN_Dataset(data.Dataset):
             coords = torch.as_tensor(protein['coords'], 
                                      device=self.device, dtype=torch.float32)   
             
-            n_res = len(coords)
             coords = coords[:self.protein_max_length, 1, :] #CA only
-                
+            n_res = len(coords)
+            
             dmap = torch.cdist(coords.unsqueeze(0), coords.unsqueeze(0),
                                compute_mode="donot_use_mm_for_euclid_dist")
             contacts = (dmap <= self.contact_dist).squeeze(0)
