@@ -67,6 +67,7 @@ class EGNN_Dataset(data.Dataset):
         self.data_list = data_list
         self.device = device
         self.contact_dist = contact_dist
+        self.protein_max_length = 1024
         self.node_counts = [len(e['seq']) for e in data_list]
         self.pos_embedder = SinusoidalPositionalEncoding(pos_embed_dim)
 
@@ -82,7 +83,7 @@ class EGNN_Dataset(data.Dataset):
                                      device=self.device, dtype=torch.float32)   
             
             n_res = len(coords)
-            coords = coords[:, 1, :] #CA only
+            coords = coords[:self.protein_max_length, 1, :] #CA only
                 
             dmap = torch.cdist(coords.unsqueeze(0), coords.unsqueeze(0),
                                compute_mode="donot_use_mm_for_euclid_dist")
