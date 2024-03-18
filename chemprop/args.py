@@ -412,6 +412,8 @@ class TrainArgs(CommonArgs):
     """ EGNN embedding size """
     freeze_egnn: bool = False
     """ Whether to freeze egnn """
+    unfreeze_egnn_decoder: bool = False
+    """ Whether to unfreeze decoder layer of egnn """
     egnn_ckpt: str = ''
     """ If given, ckpt will be used to load weights of egnn """
     include_embed_features: bool = False

@@ -243,9 +243,11 @@ class MoleculeModel(nn.Module):
             if self.args.freeze_egnn:
                 for param in list(self.egnn_model.parameters()):
                     param.requires_grad = False
-                for param in list(self.egnn_model.graph_dec.parameters()):
-                    param.requires_grad = True
-                self.egnn_model.eval()
+                if self.args.unfreeze_egnn_decoder:
+                    for param in list(self.egnn_model.graph_dec.parameters()):
+                        param.requires_grad = True
+                else:
+                    self.egnn_model.eval()
             
         # For rotary positional embeddings
         self.rotary_embedder = RotaryEmbedding(dim=args.seq_embed_dim//4)
