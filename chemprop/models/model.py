@@ -183,11 +183,12 @@ class MoleculeModel(nn.Module):
         
         if args.include_embed_features: self.create_embed_model(args)
         
-        print('Creating protein model')
-        self.create_protein_model(args)
         self.create_ffn(args)
 
         initialize_weights(self)
+        
+        print('Creating protein model')
+        self.create_protein_model(args)
         # print('Creating graph sequence model')
         # self.create_graph_sequence_model(args)
 
