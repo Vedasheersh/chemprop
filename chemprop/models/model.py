@@ -2,6 +2,7 @@ from typing import List, Union, Tuple
 from rotary_embedding_torch import RotaryEmbedding
 import transformers
 
+import os
 import numpy as np
 from rdkit import Chem
 import torch
@@ -10,7 +11,7 @@ import torch_geometric
 
 from .mpn import MPN
 from .ffn import build_ffn, MultiReadout
-from chemprop.data import ProteinGraphDataset
+from chemprop.data import ProteinGraphDataset, EGNN_Dataset
 from .gvp_models import GVPEmbedderModel
 from .transformer_models import TransformerEncoder
 from .cnn_models import ProteinResNetConfig, ResNet
@@ -19,7 +20,8 @@ from chemprop.args import TrainArgs
 from chemprop.features import BatchMolGraph
 from chemprop.nn_utils import initialize_weights
 from torch.nn.utils.rnn import pad_sequence
-from egnn_pytorch import EGNN
+# from egnn_pytorch import EGNN
+from .egnn_models import EGNN_Model
 
 from collections import OrderedDict
 
@@ -94,47 +96,6 @@ class EmbedderModel(nn.Module):
 
         return output
     
-class EGNN_Net(nn.Module):
-    def __init__(self, dim, device, depth = 3, edge_dim = 0,
-                                m_dim = 16,
-                                fourier_features = 0,
-                                num_nearest_neighbors = 30,
-                                dropout = 0.0,
-                                init_eps = 1e-3,
-                                norm_feats = True,
-                                norm_coors = True,
-                                norm_coors_scale_init = 1e-2,
-                                update_feats = True,
-                                update_coors = False,
-                                only_sparse_neighbors = False,
-                                valid_radius = float('inf'),
-                                m_pool_method = 'sum',
-                                soft_edges = True,
-                                coor_weights_clamp_value = 2.):
-        super(EGNN_Net, self).__init__()
-        self.depth = depth
-        self.layers = [EGNN(dim, edge_dim,
-                                m_dim,
-                                fourier_features,
-                                num_nearest_neighbors,
-                                dropout,
-                                init_eps,
-                                norm_feats,
-                                norm_coors,
-                                norm_coors_scale_init,
-                                update_feats,
-                                update_coors,
-                                only_sparse_neighbors,
-                                valid_radius,
-                                m_pool_method,
-                                soft_edges,
-                                coor_weights_clamp_value).to(device) for _ in range(depth)]
-
-    def forward(self, feats, coords):
-        for layer in self.layers:
-            feats, coords = layer(feats, coords)
-            
-        return feats
     
 class AttentivePooling(nn.Module):
     def __init__(self, input_size=1280, hidden_size=1280):
@@ -157,6 +118,7 @@ class AttentivePooling(nn.Module):
         attn_applied = torch.bmm(attn_weights.permute(0, 2, 1), input_tensor)
 
         return attn_applied.squeeze(1), attn_weights.squeeze(-1)
+    
 
 class MoleculeModel(nn.Module):
     """A :class:`MoleculeModel` is a model which contains a message passing network following by feed-forward layers."""
@@ -272,9 +234,18 @@ class MoleculeModel(nn.Module):
             self.resnet = ResNet(resnet_config).to(self.device)
             
         elif self.args.use_egnn:
-            depth = 3
-            self.egnn_net = EGNN_Net(self.args.seq_embed_dim, self.device)
-            self.egnn_net = EGNN_Net(self.args.seq_embed_dim, self.device, valid_radius = 15)
+            self.egnn_model = EGNN_Model(embedding_size=args.egnn_embedding_size)
+            if os.path.exists(self.args.egnn_ckpt):
+                loaded_model = torch.load(self.args.egnn_ckpt, map_location=self.device)
+                self.egnn_model.load_state_dict(loaded_model["model"])
+    
+            self.protein_ds = lambda data_list: EGNN_Dataset(data_list)
+            if self.args.freeze_egnn:
+                for param in list(self.egnn_model.parameters()):
+                    param.requires_grad = False
+                for param in list(self.egnn_model.graph_dec.parameters()):
+                    param.requires_grad = True
+                self.egnn_model.eval()
             
         # For rotary positional embeddings
         self.rotary_embedder = RotaryEmbedding(dim=args.seq_embed_dim//4)
@@ -293,7 +264,7 @@ class MoleculeModel(nn.Module):
         self.max_pooler = lambda x: torch.max(x, dim=1, 
                                               keepdim=False, out=None)
         
-        if self.args.use_gvp:
+        if self.args.use_gin:
             self.gvp_model = GVPEmbedderModel(node_h_dim = args.gvp_node_hidden_dims,
                                              edge_h_dim = args.gvp_edge_hidden_dims,
                                              seq_embed_dim = args.seq_embed_dim,
@@ -301,7 +272,8 @@ class MoleculeModel(nn.Module):
                                              include_esm_feats = args.add_esm_feats,
                                              residual = False, use_gin = args.use_gin,
                                              device = self.device)
-            self.attentive_pooler = AttentivePooling(1280, 1280).to(self.device)
+            # self.attentive_pooler = AttentivePooling(1280, 1280).to(self.device)
+            print(self.gvp_model)
             self.protein_ds = lambda data_list: ProteinGraphDataset(data_list,
                                                                     include_esm_feats = args.add_esm_feats)
             
@@ -380,16 +352,23 @@ class MoleculeModel(nn.Module):
                 weights_ffn_num_layers=args.weights_ffn_num_layers,
             )
         else:
+            # ipdb.set_trace()
             first_linear_dim_now = atom_first_linear_dim
-            if not args.skip_protein and not args.protein_records_path is None and not self.args.use_gvp:
+            if not args.skip_protein and not args.protein_records_path is None and not self.args.use_gvp and not self.args.use_gin and not self.args.use_egnn:
                 first_linear_dim_now += args.seq_embed_dim
-                if args.add_esm_feats and not args.use_gvp:
+                if args.add_esm_feats and not args.use_gvp and not args.use_gin:
                     first_linear_dim_now += 1280
+            elif args.use_egnn:
+                first_linear_dim_now += args.egnn_embedding_size
+                if args.add_esm_feats:
+                    first_linear_dim_now += 1280
+                    
             elif args.use_gvp:
                 first_linear_dim_now += args.gvp_node_hidden_dims[0]
                     # first_linear_dim_now += 
             elif args.use_gin:
-                first_linear_dim_now = 3*args.gvp_node_hidden_dims[0]
+                # first_linear_dim_now -= args.seq_embed_dim
+                first_linear_dim_now += 3*args.gvp_node_hidden_dims[0]
             
             elif args.skip_protein and args.include_embed_features:
                 first_linear_dim_now += args.embed_mlp_output_size
@@ -601,32 +580,19 @@ class MoleculeModel(nn.Module):
                                                      seq_pooled_outs], dim=-1)
                 
                 elif self.args.use_egnn:
-                    # print('egnn')
-                    coord_arr = [torch.as_tensor(each['coords'], 
-                                                 device='cuda', 
-                                                 dtype=torch.float32) for each in protein_records]
+                    protein_ds = self.protein_ds(protein_records)
+                    protein_dataloader = torch_geometric.data.DataLoader(protein_ds,
+                                                                         batch_size=self.args.batch_size)
+                    for protein_batch in protein_dataloader:
+                        protein_batch = protein_batch.to(self.device)
+                        break
+                        
+                    seq_pooled_outs = self.egnn_model(protein_batch)
                     
-                    coords = pad_sequence(coord_arr,batch_first=True,
-                                           padding_value=0).to(self.device)[:,:,1,:]
-                    mask = torch.isfinite(coords.sum(dim=(-1)))
-                    coords[~mask] = 0
-
-                    if seq_arr.shape[1]!=coords.shape[1]: 
-                        coords = coords[:,:seq_arr.shape[1],:]
-                        mask = mask[:,:seq_arr.shape[1]]
-                    # ipdb.set_trace()
-                    seq_outs = self.rotary_embedder.rotate_queries_or_keys(seq_outs,seq_dim=1)
-                    seq_outs = self.egnn_net(seq_outs, coords)
                     if self.args.add_esm_feats:
-                        seq_outs = torch.cat([esm_feature_arr, seq_outs], dim=-1)
-                    
-                    # pool attentively
-                    if not self.args.skip_attentive_pooling:
-                        seq_pooled_outs, seq_wts = self.attentive_pooler(seq_outs)
-                    else:
-                        seq_pooled_outs = seq_outs.mean(dim=1)
+                        seq_pooled_outs = torch.cat([esm_feature_arr.mean(dim=1), seq_pooled_outs], dim=-1)
                 
-                elif self.args.use_gvp:
+                elif self.args.use_gin:
                     protein_ds = self.protein_ds(protein_records)
                     protein_dataloader = torch_geometric.data.DataLoader(protein_ds,
                                                                          batch_size=self.args.batch_size)

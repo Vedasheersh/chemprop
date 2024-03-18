@@ -408,6 +408,12 @@ class TrainArgs(CommonArgs):
     """ Whether to add esm features """
     use_egnn: bool = False
     """ Whether to use egnn """
+    egnn_embedding_size = 128
+    """ EGNN embedding size """
+    freeze_egnn: bool = False
+    """ Whether to freeze egnn """
+    egnn_ckpt: str = ''
+    """ If given, ckpt will be used to load weights of egnn """
     include_embed_features: bool = False
     """ Whether to use embed features"""
     embed_dropout: bool = 0.0

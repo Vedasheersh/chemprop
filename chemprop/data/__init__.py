@@ -7,6 +7,7 @@ from .utils import filter_invalid_smiles, get_class_sizes, get_data, get_data_fr
     preprocess_smiles_columns, split_data, validate_data, validate_dataset_type, get_invalid_smiles_from_file, \
     get_invalid_smiles_from_list
 from .gvp_utils import ProteinGraphDataset
+from .egnn_utils import EGNN_Dataset
 
 __all__ = [
     'cache_graph',
@@ -40,5 +41,6 @@ __all__ = [
     'split_data',
     'validate_data',
     'validate_dataset_type',
-    'ProteinGraphDataset'
+    'ProteinGraphDataset',
+    'EGNN_Dataset'
 ]

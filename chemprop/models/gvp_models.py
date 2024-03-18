@@ -974,15 +974,124 @@ class GIN(torch.nn.Module):
         
         return h
 
+from rotary_embedding_torch import RotaryEmbedding
+
+class GINEmbedderModel(nn.Module):
+    """
+    """
+
+    def __init__(
+        self,
+        node_in_dim: Tuple[int, int] = (6, 3),
+        node_h_dim: Tuple[int, int] = (200, 20),
+        edge_in_dim: Tuple[int, int] = (32, 1),
+        edge_h_dim: Tuple[int, int] = (100, 10),
+        seq_embed_dim: int = 100,
+        num_layers=3,
+        drop_rate=0.1,
+        esm_dim = 1280,
+        residual=True,
+        include_esm_feats = False,
+        use_gin = False,
+        device = 'cpu',
+        **kwargs,
+    ):
+        """
+
+        Args:
+            node_in_dim: node dimensions (s, V) in input graph
+            node_h_dim: node dimensions to use in GVP-GNN layers
+            edge_in_dim: edge dimensions (s, V) in input graph
+            edge_h_dim: edge dimensions to embed to before use in GVP-GNN layers
+            weights: a tensor of class weights
+            num_layers: number of GVP-GNN layers
+            drop_rate: rate to use in all dropout layers
+            residual: whether to have residual connections among GNN layers
+
+        Returns:
+            None
+        """
+
+        super(GVPEmbedderModel, self).__init__(**kwargs)
+        self.identity = nn.Identity()
+        self.esm_dim = esm_dim
+        self.residual = residual
+        self.include_esm_feats = include_esm_feats
+        self.use_gin = use_gin
+        
+        if include_esm_feats:
+            node_in_dim = (node_in_dim[0] + seq_embed_dim + self.esm_dim, node_in_dim[1])
+        else:
+            node_in_dim = (node_in_dim[0] + seq_embed_dim, node_in_dim[1])
+        
+        if seq_embed_dim>0: self.W_s = nn.Embedding(20, seq_embed_dim)
+        else: self.W_s = None
+
+        self.W_v = nn.Sequential(
+            LayerNorm(node_in_dim),
+            GVP(node_in_dim, node_h_dim, activations=(None, None)),
+        )
+        self.W_e = nn.Sequential(
+            LayerNorm(edge_in_dim),
+            GVP(edge_in_dim, edge_h_dim, activations=(None, None)),
+        )
+
+        self.layers = nn.ModuleList(
+            GVPConvLayer(node_h_dim, edge_h_dim, drop_rate=drop_rate)
+            for _ in range(num_layers)
+        )
+
+        if self.residual:
+            # concat outputs from GVPConvLayer(s)
+            node_h_dim = (
+                node_h_dim[0] * num_layers,
+                node_h_dim[1] * num_layers,
+            )
+        ns, _ = node_h_dim
+        self.W_out = nn.Sequential(
+            LayerNorm(node_h_dim), GVP(node_h_dim, (ns, 0))
+        )
+
+        self.dense = nn.Sequential(
+            nn.Linear(ns, 2 * ns),
+            nn.ReLU(inplace=True),
+            nn.Dropout(p=drop_rate),
+            nn.Linear(2 * ns, ns),
+        )
+        
+        self.device = device
+        # ipdb.set_trace()
+        if self.use_gin:
+            self.gin = GIN(dim_in = node_in_dim[0], dim_h = node_h_dim[0])
+
+    def forward(self, batch):
+        """Perform the forward pass.
+
+        Args:
+            batch: (torch_geometric.data.Data, targets)
+            
+        Returns:
+            logits
+        """
+        if self.use_gin:
+            if not self.W_s is None:
+                seq = self.W_s(batch.seq)
+            else:
+                seq = batch.seq_feats
+
+            x = batch.node_s
+            x = torch.cat([x, seq], dim=-1).to(self.device)
+
+            edge_index = batch.edge_index.to(self.device)
+            logits = self.gin(x, edge_index, batch.batch)
+            
+        else:
+            logits = self._forward(batch)
+            
+        return logits
+    
 class GVPEmbedderModel(nn.Module):
-    """Bert + GVP-GNN head (LM-GVP).
-
-    Takes in protein structure graphs of type `torch_geometric.data.Data`
-    or `torch_geometric.data.Batch` and returns a scalar score for
-    each graph in the batch in a `torch.Tensor` of shape [n_nodes]
-
-    Should be used with `data.ProteinGraphDataset`, or with generators
-    of `torch_geometric.data.Batch` objects with the same attributes.
+    """
     """
 
     def __init__(
