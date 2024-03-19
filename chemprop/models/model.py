@@ -233,12 +233,17 @@ class MoleculeModel(nn.Module):
             resnet_config = ProteinResNetConfig(hidden_size=args.seq_embed_dim)
             self.resnet = ResNet(resnet_config).to(self.device)
             
+        elif self.args.add_pretrained_egnn_feats:
+            self.pretrained_egnn_feats_dict = torch.load(self.args.pretrained_egnn_feats_path)
+            x = list(self.pretrained_egnn_feats_dict.values())
+            self.pretrained_egnn_feats_avg = torch.stack(x).mean(dim=0)
+            
         elif self.args.use_egnn:
             self.egnn_model = EGNN_Model(embedding_size=args.egnn_embedding_size)
             if os.path.exists(self.args.egnn_ckpt):
                 loaded_model = torch.load(self.args.egnn_ckpt, map_location=self.device)
                 self.egnn_model.load_state_dict(loaded_model["model"])
-    
+                
             self.protein_ds = lambda data_list: EGNN_Dataset(data_list)
             if self.args.freeze_egnn:
                 for param in list(self.egnn_model.parameters()):
@@ -363,11 +368,17 @@ class MoleculeModel(nn.Module):
                 first_linear_dim_now += args.seq_embed_dim
                 if args.add_esm_feats and not args.use_gvp and not args.use_gin:
                     first_linear_dim_now += 1280
+                if args.add_pretrained_egnn_feats:
+                    first_linear_dim_now+=128
+                    assert(os.path.exists(args.pretrained_egnn_feats_path))
             elif args.use_egnn:
                 first_linear_dim_now += args.egnn_embedding_size
                 if args.add_esm_feats:
                     first_linear_dim_now += 1280
-                    
+            elif args.add_pretrained_egnn_feats:
+                first_linear_dim_now+=128
+                assert(os.path.exists(args.pretrained_egnn_feats_path))
+                
             elif args.use_gvp:
                 first_linear_dim_now += args.gvp_node_hidden_dims[0]
                     # first_linear_dim_now += 
@@ -555,6 +566,16 @@ class MoleculeModel(nn.Module):
                 
             if not self.args.skip_protein and not self.args.protein_records_path is None:
                 protein_records = batch[-1].protein_record_list
+                # ipdb.set_trace()
+                pretrained_egnn_arr = []
+                if self.args.add_pretrained_egnn_feats:
+                    for each in protein_records:
+                        name = each['name']
+                        if name in self.pretrained_egnn_feats_dict:
+                            pretrained_egnn_arr.append(self.pretrained_egnn_feats_dict[name])
+                        else:
+                            pretrained_egnn_arr.append(self.pretrained_egnn_feats_avg)
+                    pretrained_egnn_arr = torch.stack(pretrained_egnn_arr).to(self.device)
                 
                 seq_arr = [seq_to_tensor(each['seq']) for each in protein_records]
                 seq_arr = pad_sequence(seq_arr, batch_first=True,
@@ -625,6 +646,9 @@ class MoleculeModel(nn.Module):
                     else:
                         seq_pooled_outs = seq_outs.mean(dim=1)
                 # ipdb.set_trace()
+                if self.args.add_pretrained_egnn_feats:
+                    seq_pooled_outs = torch.cat([seq_pooled_outs, pretrained_egnn_arr],
+                                                dim=-1)
                 if not self.args.skip_substrate:
                     total_outs = torch.cat([seq_pooled_outs, encodings], dim=-1)
                 else:

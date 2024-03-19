@@ -408,6 +408,10 @@ class TrainArgs(CommonArgs):
     """ Whether to append esm features in GVP """
     add_esm_feats: bool = False
     """ Whether to add esm features """
+    add_pretrained_egnn_feats: bool = False
+    """ Whether to add pretrained egnn features """
+    pretrained_egnn_feats_path: str = ''
+    """ If adding, path to pretrained egnn features """
     use_egnn: bool = False
     """ Whether to use egnn """
     egnn_num_layers: int = 4
