@@ -19,6 +19,7 @@ from math import ceil
 import os
 import pkg_resources
 import sys
+import torch.nn.functional as F
 
 class SinusoidalPositionalEncoding(torch.nn.Module):
     def __init__(self, channels, pos_embed_freq_inv = 2000):
@@ -49,6 +50,13 @@ def batched_index_select(values, indices, dim=1):
     dim += value_expand_len
     return values.gather(dim, indices)
 
+def _normalize(tensor, dim=-1):
+    '''
+    Normalizes a `torch.Tensor` along dimension `dim` without `nan`s.
+    '''
+    return torch.nan_to_num(
+        torch.div(tensor, torch.norm(tensor, dim=dim, keepdim=True)))
+
 class EGNN_Dataset(data.Dataset):
     '''
     A map-syle `torch.utils.data.Dataset` which transforms JSON/dictionary-style
@@ -70,11 +78,42 @@ class EGNN_Dataset(data.Dataset):
         self.protein_max_length = 1024
         self.node_counts = [len(e['seq']) for e in data_list]
         self.pos_embedder = SinusoidalPositionalEncoding(pos_embed_dim)
-
+        self.letter_to_num = {'C': 4, 'D': 3, 'S': 15, 'Q': 5, 'K': 11, 'I': 9,
+                       'P': 14, 'T': 16, 'F': 13, 'A': 0, 'G': 7, 'H': 8,
+                       'E': 6, 'L': 10, 'R': 1, 'W': 17, 'V': 19, 
+                       'N': 2, 'Y': 18, 'M': 12}
+        self.num_to_letter = {v:k for k, v in self.letter_to_num.items()}
         
     def __len__(self): return len(self.data_list)
     
     def __getitem__(self, i): return self._featurize_as_graph(self.data_list[i])
+    
+    
+    def _dihedrals(self, X, eps=1e-7):
+        # From https://github.com/jingraham/neurips19-graph-protein-design
+        
+        X = torch.reshape(X[:, :3], [3*X.shape[0], 3])
+        dX = X[1:] - X[:-1]
+        U = _normalize(dX, dim=-1)
+        u_2 = U[:-2]
+        u_1 = U[1:-1]
+        u_0 = U[2:]
+
+        # Backbone normals
+        n_2 = _normalize(torch.cross(u_2, u_1), dim=-1)
+        n_1 = _normalize(torch.cross(u_1, u_0), dim=-1)
+
+        # Angle between normals
+        cosD = torch.sum(n_2 * n_1, -1)
+        cosD = torch.clamp(cosD, -1 + eps, 1 - eps)
+        D = torch.sign(torch.sum(u_2 * n_1, -1)) * torch.acos(cosD)
+
+        # This scheme will remove phi[0], psi[-1], omega[-1]
+        D = F.pad(D, [1, 2]) 
+        D = torch.reshape(D, [-1, 3])
+        # Lift angle representations to the circle
+        D_features = torch.cat([torch.cos(D), torch.sin(D)], 1)
+        return D_features
     
     def _featurize_as_graph(self, protein):
         name = protein['name']
@@ -82,7 +121,15 @@ class EGNN_Dataset(data.Dataset):
             coords = torch.as_tensor(protein['coords'], 
                                      device=self.device, dtype=torch.float32)   
             
+            dihs = self._dihedrals(coords)
+            
+            seq = torch.as_tensor([self.letter_to_num[a] for a in protein['seq']],
+                                  device=self.device, dtype=torch.long)
+            seq_onehot = F.one_hot(seq, num_classes=20).float()
+            
             coords = coords[:self.protein_max_length, 1, :] #CA only
+            dihs = dihs[:self.protein_max_length,:]
+            seq_onehot = seq_onehot[:self.protein_max_length,:]
             n_res = len(coords)
             
             dmap = torch.cdist(coords.unsqueeze(0), coords.unsqueeze(0),
@@ -115,7 +162,7 @@ class EGNN_Dataset(data.Dataset):
             )).unsqueeze(1)
 
             pos_embed = self.pos_embedder(torch.arange(1, n_res + 1))
-            x = torch.cat((norm_degrees, term_features, taus_pad, pos_embed), dim=1)
+            x = torch.cat((norm_degrees, term_features, taus_pad, pos_embed, dihs, seq_onehot), dim=1)
             
         data = torch_geometric.data.Data(x=x, edge_index=edge_index, coords=coords)
         

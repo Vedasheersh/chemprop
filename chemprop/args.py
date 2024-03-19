@@ -408,6 +408,8 @@ class TrainArgs(CommonArgs):
     """ Whether to add esm features """
     use_egnn: bool = False
     """ Whether to use egnn """
+    egnn_num_layers: int = 4
+    """ Number of layers in EGNN """
     egnn_embedding_size = 128
     """ EGNN embedding size """
     freeze_egnn: bool = False

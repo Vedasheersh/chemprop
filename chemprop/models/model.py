@@ -20,7 +20,6 @@ from chemprop.args import TrainArgs
 from chemprop.features import BatchMolGraph
 from chemprop.nn_utils import initialize_weights
 from torch.nn.utils.rnn import pad_sequence
-# from egnn_pytorch import EGNN
 from .egnn_models import EGNN_Model
 
 from collections import OrderedDict
