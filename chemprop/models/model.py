@@ -355,7 +355,10 @@ class MoleculeModel(nn.Module):
             )
         else:
             # ipdb.set_trace()
-            first_linear_dim_now = atom_first_linear_dim
+            if not args.skip_substrate:
+                first_linear_dim_now = atom_first_linear_dim
+            else:
+                first_linear_dim_now = 0
             if not args.skip_protein and not args.protein_records_path is None and not self.args.use_gvp and not self.args.use_gin and not self.args.use_egnn:
                 first_linear_dim_now += args.seq_embed_dim
                 if args.add_esm_feats and not args.use_gvp and not args.use_gin:
@@ -622,7 +625,11 @@ class MoleculeModel(nn.Module):
                     else:
                         seq_pooled_outs = seq_outs.mean(dim=1)
                 # ipdb.set_trace()
-                total_outs = torch.cat([seq_pooled_outs, encodings], dim=-1)
+                if not self.args.skip_substrate:
+                    total_outs = torch.cat([seq_pooled_outs, encodings], dim=-1)
+                else:
+                    total_outs = seq_pooled_outs
+                    
                 output = self.readout(total_outs)
                 
             else:

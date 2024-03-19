@@ -378,6 +378,8 @@ class TrainArgs(CommonArgs):
     """ Path to protein records json file """
     use_entransformer: bool = False
     """ Use en transformer or not """
+    skip_substrate: bool = False
+    """ Skip substrate or not """
     skip_protein: bool = False
     """ To skip protein or noot""" 
     use_esm_feats_en_transformer: bool = False
