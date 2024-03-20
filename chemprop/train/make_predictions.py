@@ -521,3 +521,5 @@ def chemprop_predict_and_fp() -> List[List[Optional[float]]]:
     This is the entry point for the command line command :code:`chemprop_predict`.
     """
     preds, unc, fps = make_predictions(args=PredictArgs().parse_args(),return_index_dict = True, return_uncertainty = True)
+    
+    return [preds, unc, fps]
