@@ -175,7 +175,7 @@ def predict_and_save(
         spectra_phase_mask=getattr(train_args, "spectra_phase_mask", None),
     )
 
-    preds, unc = estimator.calculate_uncertainty(
+    preds, unc, fps = estimator.calculate_uncertainty(
         calibrator=calibrator
     )  # preds and unc are lists of shape(data,tasks)
 
