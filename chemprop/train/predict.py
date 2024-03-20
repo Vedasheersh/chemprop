@@ -17,6 +17,7 @@ def predict(
     atom_bond_scaler: AtomBondScaler = None,
     return_unc_parameters: bool = False,
     dropout_prob: float = 0.0,
+    return_fp: bool = False
 ) -> List[List[float]]:
     """
     Makes predictions on a dataset using an ensemble of models.
@@ -28,6 +29,7 @@ def predict(
     :param atom_bond_scaler: A :class:`~chemprop.data.scaler.AtomBondScaler` fitted on the atomic/bond targets.
     :param return_unc_parameters: A bool indicating whether additional uncertainty parameters would be returned alongside the mean predictions.
     :param dropout_prob: For use during uncertainty prediction only. The propout probability used in generating a dropout ensemble.
+    :param return_fp: If return fp or not.
     :return: A list of lists of predictions. The outer list is molecules while the inner list is tasks. If returning uncertainty parameters as well,
         it is a tuple of lists of lists, of a length depending on how many uncertainty parameters are appropriate for the loss function.
     """
@@ -42,7 +44,7 @@ def predict(
         model.apply(activate_dropout_)
 
     preds = []
-
+    if return_fp: fps = []
     var, lambdas, alphas, betas = [], [], [], []  # only used if returning uncertainty parameters
 
     for batch in tqdm(data_loader, disable=disable_progress_bar, leave=False):
@@ -105,7 +107,7 @@ def predict(
 
         # Make predictions
         with torch.no_grad():
-            batch_preds = model(
+            batch_preds, batch_fps = model(
                 mol_batch,
                 features_batch,
                 atom_descriptors_batch,
@@ -114,6 +116,7 @@ def predict(
                 bond_features_batch,
                 constraints_batch,
                 bond_types_batch,
+                return_fp=return_fp
             )
 
         if model.is_atom_bond_targets:
@@ -168,7 +171,8 @@ def predict(
                 betas.append(batch_betas)
         else:
             batch_preds = batch_preds.data.cpu().numpy()
-
+            batch_fps = batch_fps.data.cpu().numpy()
+            
             if model.loss_function == "mve":
                 batch_preds, batch_var = np.split(batch_preds, 2, axis=1)
             elif model.loss_function == "dirichlet":
@@ -200,7 +204,9 @@ def predict(
 
             # Collect vectors
             batch_preds = batch_preds.tolist()
+            batch_fps = batch_fps.tolist()
             preds.extend(batch_preds)
+            fps.extend(batch_fps)
             if model.loss_function == "mve":
                 var.extend(batch_var.tolist())
             elif model.loss_function == "dirichlet" and model.classification:
@@ -219,10 +225,12 @@ def predict(
 
     if return_unc_parameters:
         if model.loss_function == "mve":
-            return preds, var
+            if return_fp: return preds, var, fps
+            else: return preds, var
         elif model.loss_function == "dirichlet":
             return preds, alphas
         elif model.loss_function == "evidential":
             return preds, lambdas, alphas, betas
 
-    return preds
+    if return_fp: return preds, fps
+    else: return preds
