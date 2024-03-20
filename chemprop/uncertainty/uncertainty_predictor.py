@@ -69,6 +69,12 @@ class UncertaintyPredictor(ABC):
         Calculate the uncalibrated predictions and store them as attributes
         """
 
+    def get_avg_fps(self):
+        """
+        Return average fps. 
+        """
+        return self.fps_avg
+        
     def get_uncal_preds(self):
         """
         Return the predicted values for the test data.
