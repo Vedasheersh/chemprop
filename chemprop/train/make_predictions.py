@@ -336,7 +336,7 @@ def predict_and_save(
             full_unc.append(un)
         return full_preds, full_unc
     else:
-        return preds, unc
+        return preds, unc, fps
 
 
 @timeit()
@@ -353,7 +353,7 @@ def make_predictions(
     ] = None,
     calibrator: UncertaintyCalibrator = None,
     return_invalid_smiles: bool = True,
-    return_index_dict: bool = False,
+    return_index_dict: bool = True,
     return_uncertainty: bool = False,
 ) -> List[List[Optional[float]]]:
     """
@@ -466,7 +466,7 @@ def make_predictions(
         preds = [None] * len(full_data)
         unc = [None] * len(full_data)
     else:
-        preds, unc = predict_and_save(
+        preds, unc, fps = predict_and_save(
             args=args,
             train_args=train_args,
             test_data=test_data,
@@ -485,6 +485,7 @@ def make_predictions(
     if return_index_dict:
         preds_dict = {}
         unc_dict = {}
+        fp_dict = {}
         for i in range(len(full_data)):
             if return_invalid_smiles:
                 preds_dict[i] = preds[i]
@@ -494,15 +495,17 @@ def make_predictions(
                 if valid_index is not None:
                     preds_dict[i] = preds[valid_index]
                     unc_dict[i] = unc[valid_index]
+                    fp_dict[i] = fps[valid_index]
+                    
         if return_uncertainty:
-            return preds_dict, unc_dict
+            return preds_dict, unc_dict, fp_dict
         else:
-            return preds_dict
+            return preds_dict, fp_dict
     else:
         if return_uncertainty:
-            return preds, unc
+            return preds, unc, fps
         else:
-            return preds
+            return preds, fps
 
 
 def chemprop_predict() -> None:
