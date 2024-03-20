@@ -352,15 +352,17 @@ class MVEPredictor(UncertaintyPredictor):
                         bond_descriptor_scaler, scale_bond_descriptors=True
                     )
 
-            preds, var = predict(
+            preds, var, fps = predict(
                 model=model,
                 data_loader=self.test_data_loader,
                 scaler=scaler,
                 atom_bond_scaler=atom_bond_scaler,
                 return_unc_parameters=True,
+                return_fp=True,
             )
             if i == 0:
                 sum_preds = np.array(preds)
+                sum_fps = fps
                 sum_squared = np.square(preds)
                 sum_vars = np.array(var)
                 individual_vars = [var]
@@ -384,6 +386,7 @@ class MVEPredictor(UncertaintyPredictor):
                     else:
                         individual_preds = np.expand_dims(np.array(preds), axis=-1)
             else:
+                sum_fps += np.array(fps)
                 sum_preds += np.array(preds)
                 sum_squared += np.square(preds)
                 sum_vars += np.array(var)
@@ -440,6 +443,7 @@ class MVEPredictor(UncertaintyPredictor):
                 uncal_preds.tolist(),
                 uncal_vars.tolist(),
             )
+            self.fps_avg = sum_fps / self.num_models
             self.individual_vars = individual_vars
             if self.individual_ensemble_predictions:
                 self.individual_preds = individual_preds.tolist()
