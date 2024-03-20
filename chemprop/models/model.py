@@ -689,5 +689,5 @@ class MoleculeModel(nn.Module):
             else:
                 output = nn.functional.softplus(output) + 1
 
-        if return_fp: return output
+        if return_fp: return output, fp
         else: return output
