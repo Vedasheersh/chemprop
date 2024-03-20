@@ -353,7 +353,7 @@ def make_predictions(
     ] = None,
     calibrator: UncertaintyCalibrator = None,
     return_invalid_smiles: bool = True,
-    return_index_dict: bool = True,
+    return_index_dict: bool = False,
     return_uncertainty: bool = False,
 ) -> List[List[Optional[float]]]:
     """
@@ -514,3 +514,10 @@ def chemprop_predict() -> None:
     This is the entry point for the command line command :code:`chemprop_predict`.
     """
     make_predictions(args=PredictArgs().parse_args())
+
+def chemprop_predict_and_fp() -> List[List[Optional[float]]]:
+    """Parses Chemprop predicting arguments and runs prediction using a trained Chemprop model.
+
+    This is the entry point for the command line command :code:`chemprop_predict`.
+    """
+    preds, unc, fps = make_predictions(args=PredictArgs().parse_args(),return_index_dict = True, return_uncertainty = True)
