@@ -5,5 +5,5 @@ import ipdb
 
 if __name__ == '__main__':
     results = chemprop_predict_and_fp()
-    ipdb.set_trace()
+    # ipdb.set_trace()
     
