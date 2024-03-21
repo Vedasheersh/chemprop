@@ -324,17 +324,22 @@ def predict_and_save(
     if return_invalid_smiles:
         full_preds = []
         full_unc = []
+        full_fp = []
         for full_index in range(len(full_data)):
             valid_index = full_to_valid_indices.get(full_index, None)
             if valid_index is not None:
                 pred = preds[valid_index]
                 un = unc[valid_index]
+                f = fps[valid_index]
             else:
                 pred = ["Invalid SMILES"] * num_tasks
                 un = ["Invalid SMILES"] * num_unc_tasks
+                f = None
             full_preds.append(pred)
             full_unc.append(un)
-        return full_preds, full_unc
+            full_fp.append(f)
+            
+        return full_preds, full_unc, full_fp
     else:
         return preds, unc, fps
 
