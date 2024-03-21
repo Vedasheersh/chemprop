@@ -360,7 +360,7 @@ def make_predictions(
     return_invalid_smiles: bool = True,
     return_index_dict: bool = False,
     return_uncertainty: bool = False,
-) -> List[List[Optional[float]]]:
+):
     """
     Loads data and a trained model and uses the model to make predictions on the data.
 
