@@ -520,7 +520,7 @@ def chemprop_predict() -> None:
     """
     make_predictions(args=PredictArgs().parse_args())
 
-def chemprop_predict_and_fp() -> List[List[Optional[float]]]:
+def chemprop_predict_and_fp():
     """Parses Chemprop predicting arguments and runs prediction using a trained Chemprop model.
 
     This is the entry point for the command line command :code:`chemprop_predict`.
