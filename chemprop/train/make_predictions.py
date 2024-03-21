@@ -495,6 +495,7 @@ def make_predictions(
             if return_invalid_smiles:
                 preds_dict[i] = preds[i]
                 unc_dict[i] = unc[i]
+                fp_dict[i] = fps[i]
             else:
                 valid_index = full_to_valid_indices.get(i, None)
                 if valid_index is not None:
